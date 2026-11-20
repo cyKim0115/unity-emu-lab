@@ -10,7 +10,7 @@
 //   launches write to files instead.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
+import { closeSync, existsSync, openSync, readlinkSync } from "node:fs";
 import { basename } from "node:path";
 import type { Readable } from "node:stream";
 
@@ -261,6 +261,21 @@ export function parsePsLines(text: string): ProcInfo[] {
   return list;
 }
 
+/** Executable name from a Linux /proc/<pid>/exe link target ("/usr/bin/node", "/x/qemu-system-x86_64 (deleted)"). */
+export function exeNameFromLink(target: string): string | null {
+  const t = target.replace(/ \(deleted\)$/, "").trim();
+  return t ? basename(t) : null;
+}
+
+/** Basename of /proc/<pid>/exe, or null when it cannot be read (another user's process, gone, not Linux). */
+function linuxExeName(pid: number): string | null {
+  try {
+    return exeNameFromLink(readlinkSync(`/proc/${pid}/exe`));
+  } catch {
+    return null;
+  }
+}
+
 // No double quotes inside: the script is passed as one argument and Windows quoting stays trivial.
 function windowsQuery(pid?: number): string {
   const select = pid === undefined ? "Get-Process" : `Get-Process -Id ${pid}`;
@@ -282,7 +297,13 @@ async function queryProcesses(pid?: number): Promise<ProcInfo[]> {
     }
     const args = pid === undefined ? ["-A", "-o", "pid=,lstart=,comm="] : ["-p", String(pid), "-o", "pid=,lstart=,comm="];
     const r = await runProcess("ps", args, { timeoutMs: PS_TIMEOUT_MS, env: { ...process.env, LC_ALL: "C", LANG: "C" } });
-    return parsePsLines(r.stdout);
+    const list = parsePsLines(r.stdout);
+    if (process.platform === "linux") {
+      // Linux comm is the main thread's name, cut to 15 characters ("qemu-system-x86", and Node 24 names its
+      // main thread "MainThread"). The executable path gives the real name when we may read it.
+      for (const p of list) p.name = linuxExeName(p.pid) ?? p.name;
+    }
+    return list;
   } catch {
     // The tool is missing (ENOENT) or cannot run: no information.
     return [];

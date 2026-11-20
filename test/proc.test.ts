@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
+  exeNameFromLink,
   findProcesses,
   getProcessInfo,
   parseLstart,
@@ -144,5 +145,11 @@ describe("process lookup", () => {
     assert.deepEqual(list[0].startTime, new Date(2026, 10, 20, 10, 43, 0));
     assert.deepEqual(parseLstart("Mon Nov  3 09:05:07 2026"), new Date(2026, 10, 3, 9, 5, 7));
     assert.equal(parseLstart("garbage"), null);
+  });
+
+  it("takes the Linux executable name from the /proc/<pid>/exe link (comm is a thread name, cut to 15 chars)", () => {
+    assert.equal(exeNameFromLink("/usr/bin/node"), "node");
+    assert.equal(exeNameFromLink("/opt/sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64 (deleted)"), "qemu-system-x86_64");
+    assert.equal(exeNameFromLink(""), null);
   });
 });
