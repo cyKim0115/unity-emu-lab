@@ -1,0 +1,3 @@
+# Unity writes these with LF when the sample builds; keep them LF so a build does not show up as a change.
+sample/EmuSmoke/ProjectSettings/** text eol=lf
+sample/EmuSmoke/Packages/** text eol=lf

@@ -1,0 +1,6 @@
+11-04 03:25:10.101 I/Unity   ( 3824): SMOKE_APP_READY
+11-04 03:25:11.204 E/AndroidRuntime( 3824): FATAL EXCEPTION: main
+11-04 03:25:11.204 E/AndroidRuntime( 3824): Process: com.example.emusmoke, PID: 3824
+11-04 03:25:11.204 E/AndroidRuntime( 3824): java.lang.RuntimeException: Unable to start activity ComponentInfo{com.example.emusmoke/com.unity3d.player.UnityPlayerGameActivity}: java.lang.IllegalStateException: smoke test crash
+11-04 03:25:11.204 E/AndroidRuntime( 3824): 	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3782)
+11-04 03:25:11.210 I/Process ( 3824): Sending signal. PID: 3824 SIG: 9

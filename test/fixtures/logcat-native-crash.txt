@@ -1,0 +1,2 @@
+11-04 03:26:01.500 F/libc    ( 3824): Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 3850 (UnityMain), pid 3824 (com.example.emusmoke)
+11-04 03:26:01.620 F/DEBUG   ( 3990): pid: 3824, tid: 3850, name: UnityMain  >>> com.example.emusmoke <<<

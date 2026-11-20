@@ -1,0 +1,1 @@
+12:21:49 tapped 'Allow' in com.google.android.permissioncontroller at 540,1347.5

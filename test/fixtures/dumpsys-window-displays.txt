@@ -1,0 +1,4 @@
+WINDOW MANAGER DISPLAY CONTENTS (dumpsys window displays)
+  Display: mDisplayId=0 rootTasks=2
+    init=1080x2400 420dpi base=1080x2400 420dpi cur=1080x2400 app=1080x2274 rng=1080x1017-2274x2274
+    deferred=false mLayoutNeeded=false mTouchExcludeRegion=SkRegion((0,0,1080,2400))

@@ -1,0 +1,67 @@
+Current Notification Manager state:
+  Notification List:
+    NotificationRecord(0x01a2b3c4: pkg=com.android.shell user=UserHandle{0} id=7 tag=null importance=3 key=0|com.android.shell|7|null|2000: Notification(channel=shell shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=0 color=0x00000000 vis=PRIVATE))
+      uid=2000 userId=0
+      opPkg=com.android.shell
+      notification=
+            extras={
+                android.title=String (EMU-SMOKE-032148)
+                android.text=String (Posted by the shell with the same title)
+            }
+      mCreationTimeMs=1793762543000
+      mUpdateTimeMs=1793762543000
+    NotificationRecord(0x0d4e5f60: pkg=com.example.emusmoke2 user=UserHandle{0} id=9 tag=null importance=4 key=0|com.example.emusmoke2|9|null|10211: Notification(channel=emu_smoke shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=0 color=0x00000000 vis=PRIVATE))
+      uid=10211 userId=0
+      opPkg=com.example.emusmoke2
+      notification=
+            extras={
+                android.title=String (EMU-SMOKE-032148)
+            }
+      mUpdateTimeMs=1793762543500
+    NotificationRecord(0x0b1c2d3e: pkg=com.example.emusmoke user=UserHandle{0} id=44 tag=null importance=4 key=0|com.example.emusmoke|44|null|10210: Notification(channel=emu_smoke shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=0 color=0x00000000 vis=PRIVATE))
+      uid=10210 userId=0
+      opPkg=com.example.emusmoke
+      notification=
+            extras={
+                android.title=String (EMU-SMOKE-031500)
+                android.text=String (Local notification scheduled 20s ahead)
+                id=Integer (44)
+            }
+      mRankingTimeMs=1793761900000
+      mCreationTimeMs=1793761900000
+      mUpdateTimeMs=1793761900000
+    NotificationRecord(0x0c7a9be5: pkg=com.example.emusmoke user=UserHandle{0} id=45 tag=null importance=4 key=0|com.example.emusmoke|45|null|10210: Notification(channel=emu_smoke shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=0 color=0x00000000 vis=PRIVATE))
+      uid=10210 userId=0
+      opPkg=com.example.emusmoke
+      icon=Icon(typ=RESOURCE pkg=com.example.emusmoke id=0x7f0c0000)
+      flags=0
+      key=0|com.example.emusmoke|45|null|10210
+      seen=true
+      notification=
+            contentIntent=PendingIntent{3d256ba: PendingIntentRecord{7a81742 com.example.emusmoke startActivity (allowlist: 8b43353:+30s0ms/0/NOTIFICATION_SERVICE/NotificationManagerService)}}
+            when=1793762528420/1793762528420
+            extras={
+                android.title=String (EMU-SMOKE-032148)
+                android.text=String (Local notification scheduled 20s ahead)
+                android.appInfo=ApplicationInfo (ApplicationInfo{4d7c96b com.example.emusmoke})
+                fireTime=Long (1793762528420)
+                com.unity.showInForeground=Boolean (true)
+                id=Integer (45)
+            }
+      mImportance=HIGH
+      mRankingTimeMs=1793762528420
+      mCreationTimeMs=1793762543424
+      mVisibleSinceMs=1793762544222
+      mUpdateTimeMs=1793762543424
+      mInterruptionTimeMs=1793762544223
+      mShowBadge=true
+    NotificationRecord(0x0f9e8d7c: pkg=com.example.emusmoke user=UserHandle{0} id=46 tag=null importance=4 key=0|com.example.emusmoke|46|null|10210: Notification(channel=emu_smoke shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=0 color=0x00000000 vis=PRIVATE))
+      uid=10210 userId=0
+      opPkg=com.example.emusmoke
+      notification=
+            extras={
+                android.title=String ([이벤트] 한글 알림 B)
+                android.text=String (new body)
+            }
+      mCreationTimeMs=1793762550000
+  Snoozed notifications:

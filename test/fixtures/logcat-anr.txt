@@ -1,0 +1,4 @@
+11-04 03:27:40.010 I/Unity   ( 3824): SMOKE_APP_READY
+11-04 03:27:52.441 E/ActivityManager(  595): ANR in com.example.emusmoke (com.example.emusmoke/com.unity3d.player.UnityPlayerGameActivity)
+11-04 03:27:52.441 E/ActivityManager(  595): PID: 3824
+11-04 03:27:52.441 E/ActivityManager(  595): Reason: Input dispatching timed out

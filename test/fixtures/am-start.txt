@@ -1,0 +1,7 @@
+Starting: Intent { cmp=com.example.emusmoke/com.unity3d.player.UnityPlayerGameActivity (has extras) }
+Status: ok
+LaunchState: COLD
+Activity: com.example.emusmoke/com.unity3d.player.UnityPlayerGameActivity
+TotalTime: 4910
+WaitTime: 4916
+Complete

@@ -1,0 +1,7 @@
+ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)
+Display #0 (activities from top to bottom):
+  * Task{f858539 #16 type=standard A=10210:com.example.emusmoke}
+    topResumedActivity=ActivityRecord{6c1d2e3 u0 com.example.emusmoke/com.unity3d.player.UnityPlayerGameActivity t16}
+  * Task{1a2b3c4 #1 type=home}
+    mLastPausedActivity: ActivityRecord{9f8e7d6 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t15}
+  ResumedActivity: ActivityRecord{6c1d2e3 u0 com.example.emusmoke/com.unity3d.player.UnityPlayerGameActivity t16}

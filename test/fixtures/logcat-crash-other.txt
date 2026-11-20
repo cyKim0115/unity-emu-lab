@@ -1,0 +1,4 @@
+11-04 03:25:11.204 E/AndroidRuntime( 4100): FATAL EXCEPTION: main
+11-04 03:25:11.204 E/AndroidRuntime( 4100): Process: com.example.other, PID: 4100
+11-04 03:25:12.300 E/ActivityManager(  595): ANR in com.example.emusmoke2 (com.example.emusmoke2/.MainActivity)
+11-04 03:25:13.000 D/AndroidRuntime( 3931): >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<

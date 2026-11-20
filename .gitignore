@@ -1,0 +1,23 @@
+artifacts/
+# Lab-only SDK / AVD folders (setup-android-sdk.ps1 -SdkRoot / -AvdHome)
+local.settings.json
+
+sample/EmuSmoke/Library/
+sample/EmuSmoke/Temp/
+sample/EmuSmoke/Logs/
+sample/EmuSmoke/UserSettings/
+sample/EmuSmoke/Builds/
+sample/EmuSmoke/obj/
+sample/EmuSmoke/.vscode/
+sample/EmuSmoke/.utmp/
+sample/EmuSmoke/build/
+*.csproj
+*.sln
+*.slnx
+
+# Node package (npm run build output, dependencies)
+node_modules/
+dist/
+*.tgz
+# personal overlay and notes (private/AGENTS.md)
+/private/

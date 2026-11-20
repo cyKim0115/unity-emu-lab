@@ -1,0 +1,48 @@
+--------- beginning of main
+11-04 03:21:27.840 D/Zygote  (  395): Forked child process 3779
+11-04 03:21:27.846 D/ControlsListingControllerImpl(  846): ServiceConfig reloaded, count: 0
+11-04 03:21:32.325 V/Unity   ( 3824): Context Type: GameActivity
+11-04 03:21:32.355 D/Unity   ( 3824): CommandLine:  
+11-04 03:21:32.451 I/GameActivity( 3824): Looking for library libgame.so
+11-04 03:21:32.453 I/GameActivity( 3824): Found library libgame.so. Loading...
+11-04 03:21:32.484 D/GameActivity( 3824): SDK version: 35
+11-04 03:21:32.496 I/Unity   ( 3824): UnityApplication::CreateInstance
+11-04 03:21:32.505 I/Unity   ( 3824): GameActivity Package Version '4.4.0'
+11-04 03:21:32.523 I/Unity   ( 3824): Starting Game Loop
+11-04 03:21:32.771 E/TaskPersister(  595): File error accessing recents directory (directory doesn't exist?).
+11-04 03:21:32.918 I/Unity   ( 3824): onResume
+11-04 03:21:32.919 I/Unity   ( 3824): resumeUnity
+11-04 03:21:32.930 I/Unity   ( 3824): Handle cmd APP_CMD_START(11)
+11-04 03:21:32.946 I/Unity   ( 3824): Handle cmd APP_CMD_RESUME(12)
+11-04 03:21:38.639 D/AndroidRuntime( 3931): >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-04 03:21:38.644 I/AndroidRuntime( 3931): Using default boot image
+11-04 03:21:38.644 I/AndroidRuntime( 3931): Leaving lock profiling enabled
+11-04 03:21:40.702 D/Unity   ( 3824): Using NDK Choreographer.
+11-04 03:21:40.743 D/Unity   ( 3824): Stopping Unity systrace
+11-04 03:21:40.768 I/Unity   ( 3824): SMOKE_APP_STARTED
+11-04 03:21:40.768 I/Unity   ( 3824): UnityEngine.DebugLogHandler:Internal_Log(LogType, LogOption, String, Object)
+11-04 03:21:40.768 I/Unity   ( 3824): <Start>d__7:MoveNext()
+11-04 03:21:48.408 W/PackageConfigPersister(  595): App-specific configuration not found for packageName: com.example.emusmoke and userId: 0
+11-04 03:21:48.410 W/NotificationCenter( 1239): NotificationCenter$ListenerData.notifyOnExecutor():672 Heavy notify work detected on UI thread: |kga->jjc| takes 22ms
+11-04 03:21:48.414 I/Unity   ( 3824): SMOKE_NOTIF_PERMISSION Allowed
+11-04 03:21:48.414 I/Unity   ( 3824): UnityEngine.DebugLogHandler:Internal_Log(LogType, LogOption, String, Object)
+11-04 03:21:48.414 I/Unity   ( 3824): <Start>d__7:MoveNext()
+11-04 03:21:48.414 I/Unity   ( 3824): UnityEngine.SetupCoroutine:InvokeMoveNext(IEnumerator, IntPtr)
+11-04 03:21:48.414 I/Unity   ( 3824): 
+11-04 03:21:48.435 I/Unity   ( 3824): SMOKE_NOTIF_SCHEDULED id=45 title=EMU-SMOKE-032148 delay=20 exact=False
+11-04 03:21:48.435 I/Unity   ( 3824): UnityEngine.DebugLogHandler:Internal_Log(LogType, LogOption, String, Object)
+11-04 03:21:48.435 I/Unity   ( 3824): EmuSmoke:Schedule(Int32)
+11-04 03:21:48.435 I/Unity   ( 3824): <Start>d__7:MoveNext()
+11-04 03:21:48.435 I/Unity   ( 3824): UnityEngine.SetupCoroutine:InvokeMoveNext(IEnumerator, IntPtr)
+11-04 03:21:48.435 I/Unity   ( 3824): 
+11-04 03:21:48.438 D/audioserver(  449): logFgsApiEnd: FGS Logger Transaction failed, -129
+11-04 03:21:48.439 I/Unity   ( 3824): SMOKE_APP_READY
+11-04 03:21:48.439 I/Unity   ( 3824): UnityEngine.DebugLogHandler:Internal_Log(LogType, LogOption, String, Object)
+11-04 03:21:52.047 I/MESA    ( 3824): exportSyncFdForQSRILocked: call for image 0x7f7a29c9fd50 hos timage handle 0x700030000001c
+11-04 03:21:52.047 I/MESA    ( 3824): exportSyncFdForQSRILocked: got fd: 167
+11-04 03:21:52.085 I/Unity   ( 3824): SMOKE_TAP count=1
+11-04 03:21:52.085 I/Unity   ( 3824): UnityEngine.DebugLogHandler:Internal_Log(LogType, LogOption, String, Object)
+11-04 03:22:32.138 W/Looper  (  595): Slow dispatch took 147ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@28f2e00 m=0
+11-04 03:22:32.146 W/IPCThreadState(  504): Sending oneway calls to frozen process.
+11-04 03:22:32.158 I/Unity   ( 3824): SMOKE_OPENED_FROM_NOTIFICATION id=45 title=EMU-SMOKE-032148
+11-04 03:22:32.158 I/Unity   ( 3824): UnityEngine.DebugLogHandler:Internal_Log(LogType, LogOption, String, Object)
