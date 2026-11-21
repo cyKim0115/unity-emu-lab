@@ -1,7 +1,7 @@
 # AGENTS.md — unity-emu-lab
 
 이 저장소를 받은 AI의 일: 사용자 PC에 「Unity 빌드 → 실행 → 자체 테스트」 환경을 갖추고, 사용자의 Unity 프로젝트에 붙여 실제로 돌린 뒤 결과를 보고한다.
-대상은 Android(에뮬레이터, 앱 밖 알림창까지)와 WebGL(로컬 서버 + 브라우저)이다. Windows 10/11(x64) + Windows PowerShell 5.1 기준이다.
+대상은 Android(에뮬레이터, 앱 밖 알림창까지), WebGL(로컬 서버 + 브라우저), Windows Standalone(이 PC 바탕화면에서 exe 실행)이다. Windows 10/11(x64) + Windows PowerShell 5.1 기준이다.
 
 **받을 위치**: 사용자 Unity 프로젝트 폴더와 그 git 저장소 **밖**에 클론한다(예: `git clone <url> %USERPROFILE%\unity-emu-lab`). 프로젝트나 `Assets\` 안에 받지 않는다.
 그 안에 받으면 이 저장소 파일이 사용자 변경으로 잡히고 빌드 출력이 프로젝트에 쌓인다. 모든 명령은 그 클론에서 실행한다. `doctor.ps1 -ProjectPath`가 `[FAIL] lab-location`으로 막는다.
@@ -16,8 +16,9 @@
    다른 위치를 원하면 `setup-android-sdk.ps1 -AcceptLicenses -SdkRoot <폴더> -AvdHome <폴더>`로 설치한다. 이 저장소 안 `local.settings.json`(커밋 안 됨)에 남아 이후 모든 명령이 그 위치를 쓴다. 전역 환경 변수는 바꾸지 않는다.
    환경 변수 `ANDROID_SDK_ROOT`·`ANDROID_AVD_HOME`이 있으면 그 값이 이긴다(`ANDROID_HOME`은 무시한다. Android Studio SDK를 건드리지 않으려고). 위치를 처음으로 돌리려면 `local.settings.json`을 지운다.
 2. **시스템 설정은 바꾸지 않는다.** BIOS 가상화, Windows 기능 「Windows 하이퍼바이저 플랫폼」, 관리자 권한 작업, 재부팅은 `doctor.ps1`의 `[HUMAN]` 줄을 그대로 사용자에게 안내하고 기다린다.
-3. **Unity Hub 에디터·모듈 설치는 사용자가 한다.** Android/WebGL Build Support 같은 모듈은 수 GB라 대신 받지 않는다.
+3. **Unity Hub 에디터·모듈 설치는 사용자가 한다.** Android/WebGL/Windows(IL2CPP) Build Support 같은 모듈과 Visual Studio C++ 도구는 수 GB라 대신 받지 않는다.
 4. **소리는 끈 채로 둔다.** 에뮬레이터 `-no-audio`, 브라우저 `--mute-audio` 기본값을 바꾸지 않는다. 사용자가 그 요청에서 직접 원할 때만 예외다.
+   Windows 플레이어는 소리를 끈 테스트 빌드(템플릿 `BuildWindows`)로만 띄운다. 그렇지 않은 빌드는 사용자가 소리를 허락할 때만 `-AllowAudio`(아래 「Windows 판정」). 시스템 음량·음소거·볼륨 믹서는 바꾸지 않는다.
 5. **사용자 프로젝트에서 작업 중인 변경은 건드리지 않는다.** 빌드는 ProjectSettings나 에셋 그룹을 바꿔 놓을 수 있다. 그 변경과 이 저장소 때문에 추가한 파일·코드 줄은 커밋하지 않는다. 사용자 프로젝트 쪽 자동 커밋 규칙이 있어도 이 작업에는 적용하지 않는다.
    빌드 전후 git 처리는 직접 하지 말고 `scripts\project-guard.ps1`로 한다. 한글·공백·대괄호 경로, 큰 저장소 안의 하위 폴더 프로젝트, PS 5.1 인코딩 문제를 이 스크립트가 처리한다.
    - **Snapshot은 첫 빌드 전에 한 번** 찍는다: `scripts\project-guard.ps1 -ProjectPath <p> -Mode Snapshot`. 템플릿 복사·`Debug.Log` 추가도 Snapshot **뒤에** 한다. 그래야 Report에 이 저장소 때문에 생긴 변경으로 잡혀 Revert로 치울 수 있다.
@@ -36,7 +37,7 @@
    - 「git not found on PATH ... inside a git repo」(doctor는 `[HUMAN] project-vcs`)면 git 프로젝트다. git 없는 프로젝트로 다루지 말고, Git for Windows 설치나 git 클라이언트의 git을 PATH에 넣게 한 뒤 새 셸에서 다시 한다.
    - git 작업 트리가 아니면(Plastic SCM, Perforce 등) 빌드 전에 멈추고 묻는다. 빌드는 `Assets\`의 파일도 바꿀 수 있다. 사용자 VCS로 체크포인트(Plastic 체크인·shelve, Perforce shelve)를 만들게 하거나,
      동의를 받아 `Library`·`Temp`·`Logs`·`obj`·`Builds`를 뺀 프로젝트 폴더 전체를 백업 폴더에 복사한다. 최소한 `ProjectSettings\`, `Packages\manifest.json`, `Packages\packages-lock.json`은 복사한다.
-   - 빌드 전에 알린다: batchmode 빌드는 프로젝트의 활성 플랫폼을 Android/WebGL로 바꾼다. 이 값은 Library에 저장돼 git에는 안 보인다. 다음에 에디터를 열면 그 플랫폼으로 열리고, 원래 플랫폼으로 돌리면 재임포트가 걸릴 수 있다.
+   - 빌드 전에 알린다: batchmode 빌드는 프로젝트의 활성 플랫폼을 Android/WebGL/Windows(Standalone)로 바꾼다. 이 값은 Library에 저장돼 git에는 안 보인다. 다음에 에디터를 열면 그 플랫폼으로 열리고, 원래 플랫폼으로 돌리면 재임포트가 걸릴 수 있다.
 6. **에디터가 열려 있는 프로젝트는 batchmode 빌드가 막힌다.** `doctor.ps1`의 `project-open`과 `build-unity.ps1`이 잡고 있는 프로세스를 알려 준다.
    「open in a Unity Editor (pid N)」면 에디터를 닫아 달라고 하거나, 사용자가 에디터에서 빌드한 결과를 `-SkipBuild`로 받는다.
    「batchmode Unity (pid N) ... still building」이면 이전 실행이 남긴 빌드다. 끝날 때까지 기다리거나, 사용자 동의 후 `Stop-Process -Id N`으로 끄고 규칙 5의 Report를 돌린다.
@@ -51,7 +52,7 @@
 12. **사용자 홈의 전역 설정은 대신 바꾸지 않는다.** `~/.codex/config.toml`, `~/.claude*`, 영구 환경 변수처럼 이 저장소 밖에서 다른 작업에도 영향을 주는 설정은 바꿀 내용과 영향을 보여 주고 「예」를 받은 뒤에만 바꾸거나, 사용자가 직접 하게 한다.
 13. **다른 에뮬레이터는 건드리지 않는다.** 스크립트는 AVD `unity-test`만 대상으로 하고, 다른 에뮬레이터(Android Studio의 개인 AVD 등)만 떠 있으면 멈춘다. 그때는 그 에뮬레이터를 닫아 달라고 하고 기다린다. 대신 끄지 않는다.
 14. **오래 걸리는 단계는 도구 시간 제한을 넘긴다.** 대략: SDK 설치 5~20분, 샘플 첫 실행(Library 임포트 + 첫 빌드 + 첫 부팅) 3~6분, 사용자 프로젝트 빌드는 최대 `-TimeoutMinutes`(기본 40분).
-    에이전트 셸 기본 제한(예: 2분)으로 돌리지 말고, 긴 시간 제한이나 백그라운드 실행으로 돌린 뒤 마지막 줄(`SETUP_DONE`, `BUILD_OK`, `SMOKE PASS/FAIL`, `WEBGL_SMOKE PASS/FAIL`)이나 `summary.json`을 읽는다.
+    에이전트 셸 기본 제한(예: 2분)으로 돌리지 말고, 긴 시간 제한이나 백그라운드 실행으로 돌린 뒤 마지막 줄(`SETUP_DONE`, `BUILD_OK`, `SMOKE PASS/FAIL`, `WEBGL_SMOKE PASS/FAIL`, `WINDOWS_SMOKE PASS/FAIL`)이나 `summary.json`을 읽는다.
     실행 중일 수 있는 동안 두 번째 실행을 시작하지 않는다. 실행이 잘렸으면 다시 하기 전에 `doctor.ps1 -ProjectPath <p>`의 `project-open`으로 남은 batchmode Unity가 있는지 본다(규칙 6). 잘린 빌드도 규칙 5의 Report를 돌린다.
 15. **에뮬레이터는 잡고 쓰고 놓는다.** 한 PC의 AVD `unity-test`는 한 세션만 쓴다. `start-emulator.ps1`(`run-all.ps1`이 부름)이 임대(`%USERPROFILE%\.emu-lab\leases\unity-test.json`)를 잡고, 다 쓰면 `release-emulator.ps1`로 놓는다.
     - 임대 주인은 `EMU_OWNER`, 없으면 Claude Code 세션(`claude:<세션 앞 8자>`)·Codex 스레드(`codex:<끝 8자>`), 없으면 `사용자@PC`다. 기본 4시간이고 `start-emulator.ps1`을 다시 돌리면 늘어난다(`-Hours`).
@@ -66,7 +67,7 @@
 `-File`로 부를 때 경로 인자를 `\`로 끝내지 않는다(`"C:\Game\"`처럼 쓰면 `\"`가 따옴표로 읽혀 뒤 인자가 사라진다). `"C:\Game"`처럼 쓴다.
 
 1. **점검**: `scripts\doctor.ps1 -ProjectPath <사용자 프로젝트> -Target <사용자가 쓸 대상>`
-   - `-Target`은 사용자가 원한 대상만 준다(`Android`, `WebGL`, 둘 다면 `Both`). 기본값 `Both`는 WebGL 모듈까지 요구한다.
+   - `-Target`은 사용자가 원한 대상만 준다(`Android`, `WebGL`, `Windows`, Android와 WebGL 둘 다면 `Both`). 기본값 `Both`는 WebGL 모듈까지 요구한다. Windows와 다른 대상을 함께 쓰면 따로 두 번 돌린다.
    - 종료 코드: `0` READY, `2` TODO만 남음, `1` HUMAN/FAIL 있음.
    - `[HUMAN]`은 사용자에게 할 일을 전하고 기다린다. 사용자가 처리했다고 하면 같은 `-Target`/`-NoSample`로 doctor를 다시 돌려 종료 코드가 0이나 2가 된 뒤에 다음으로 간다.
    - `[TODO]`는 동의를 받고 진행한다. `[WARN] project-vcs`는 규칙 5대로 처리한다. 「dubious ownership」이면 규칙 11이다.
@@ -78,28 +79,30 @@
 2. **Android SDK**(Android를 쓸 때, 동의 후, 5~20분): `scripts\setup-android-sdk.ps1 -AcceptLicenses`.
    - 끝 줄 `SETUP_DONE accel=ok`(종료 0)면 다음으로 간다. `[HUMAN] emulator-accel ...` + `SETUP_DONE accel=missing`(종료 2)면 그 줄을 그대로 전하고 기다린 뒤 doctor를 다시 돌린다. 3단계로 가지 않는다.
    - 프록시 환경이면 `HTTPS_PROXY`/`HTTP_PROXY`(`http://host:port`)를 자동으로 쓴다. 일반 터미널에서도 다운로드가 실패하면 사용자에게 프록시 주소를 물어 `-Proxy host:port`로 다시 돌린다(인증 프록시는 지원하지 않는다).
-3. **샘플로 환경 확인**(3~6분): `scripts\run-all.ps1 -Target Android` 또는 `-Target WebGL`. 사용자가 쓰는 대상이 `PASS`여야 다음으로 간다. 둘 다 쓸 때는 두 번 돌린다(`run-all.ps1`은 `Both`를 받지 않는다).
+3. **샘플로 환경 확인**(3~6분): `scripts\run-all.ps1 -Target Android`, `-Target WebGL` 또는 `-Target Windows`. 사용자가 쓰는 대상이 `PASS`여야 다음으로 간다. 둘 다 쓸 때는 두 번 돌린다(`run-all.ps1`은 `Both`를 받지 않는다).
 4. **사용자 프로젝트에 붙이기**: 아래 「프로젝트에 붙이기」. 규칙 5의 Snapshot부터 한다.
 5. **놓기**(Android): `scripts\release-emulator.ps1 [-Uninstall]`(규칙 15). 끝 줄 `RELEASED`를 확인한다.
-6. **보고**: 결과 폴더 `artifacts\<시각>-<smoke|webgl>-<PID>\`의 `summary.json`, PNG, `logcat.txt`/`console.txt`. PASS/FAIL과 근거를 짧게 전한다. 사용자 프로젝트에서 바꾸거나 추가한 경로, guard Report·Revert 결과, `EMU_BUILD_WARN` 줄이 있으면 함께 적는다. 놓기에서 남긴 앱(`KEPT apps`)도 적는다.
+6. **보고**: 결과 폴더 `artifacts\<시각>-<smoke|webgl|windows>-<PID>\`의 `summary.json`, PNG, `logcat.txt`/`console.txt`/`Player.log`. PASS/FAIL과 근거를 짧게 전한다. 사용자 프로젝트에서 바꾸거나 추가한 경로, guard Report·Revert 결과, `EMU_BUILD_WARN` 줄이 있으면 함께 적는다. 놓기에서 남긴 앱(`KEPT apps`), Windows면 남은 PlayerPrefs 키(`PREFS_LEFT`)와 빌드 출력 경로도 적는다.
 
 ## 프로젝트에 붙이기
 
 ### 빌드
 
 - 프로젝트에 batchmode 빌드 메서드가 있으면 그걸 쓴다. 먼저 그 프로젝트의 빌드 문서·스크립트(`Assets/Editor/*Build*.cs`, `docs/`)를 읽고 그 절차를 따른다.
-  `scripts\run-all.ps1 -ProjectPath <p> -Target Android|WebGL -Method <Class.Method> ...`(빌드부터 테스트까지) 또는 `scripts\build-unity.ps1 -ProjectPath <p> -Target Android|WebGL -Method <Class.Method> -Out <출력>`(빌드만).
+  `scripts\run-all.ps1 -ProjectPath <p> -Target Android|WebGL|Windows -Method <Class.Method> ...`(빌드부터 테스트까지) 또는 `scripts\build-unity.ps1 -ProjectPath <p> -Target Android|WebGL|Windows -Method <Class.Method> -Out <출력>`(빌드만).
   - 메서드는 받은 `-buildOut`(Android는 `-apkOut`도) 경로에 써야 한다. 다른 곳에 쓰는 메서드면 `-Out`을 실제로 쓰는 경로로 주거나, 메서드의 출력 인자를 `-ExtraArgs`로 같은 절대 경로로 넘긴다. 실패하면 `EditorApplication.Exit(1)`로 끝나야 한다.
   - Android `-Out`은 설치할 수 있는 `.apk` 파일 하나다(`.aab`, Export Project 폴더, ABI별 분할 APK는 안 된다). `build-unity.ps1`은 이번 빌드가 `-Out`에 새로 쓴 게 없거나 로그의 마지막 결과가 실패면 `BUILD_OK`를 찍지 않고 이유를 알린다.
-  - 출력 기본값은 프로젝트 밖인 이 저장소의 `artifacts\builds\<폴더명>-<해시8>\Android\app.apk`·`...\WebGL`이다(샘플만 자기 `Builds\`). `run-all.ps1 -SkipBuild -ProjectPath <p>`는 그 기본 위치를 찾는다.
+  - Windows `-Out`은 `.exe` 파일이다. Unity가 그 옆에 `<이름>_Data`·`UnityPlayer.dll` 등을 쓴다.
+  - 출력 기본값은 프로젝트 밖인 이 저장소의 `artifacts\builds\<폴더명>-<해시8>\Android\app.apk`·`...\WebGL`·`...\Windows\app.exe`이다(샘플만 자기 `Builds\`). `run-all.ps1 -SkipBuild -ProjectPath <p>`는 그 기본 위치를 찾는다.
 - 메서드가 받는 다른 인자는 `-ExtraArgs`로 넘긴다. `-File`로는 배열과 `-`로 시작하는 값을 못 넘기므로 이때만 `-Command`로 부른다. 경로·값은 작은따옴표로 감싸고(값 안의 `'`는 `''`), 명령 안에 큰따옴표와 `$`는 쓰지 않는다.
   `-ExtraArgs` 안의 경로는 절대 경로로 쓴다. 스크립트는 `-Out`만 절대 경로로 바꾸고, Unity는 상대 경로를 사용자 프로젝트 기준으로 해석한다.
   `powershell -NoProfile -ExecutionPolicy Bypass -Command "& .\scripts\build-unity.ps1 -ProjectPath '<p>' -Target WebGL -Method <Class.Method> -Out '<출력>' -ExtraArgs @('-name','value')"`
 - 메서드가 없으면 Unity 6 빌드 프로필을 쓴다: `-BuildProfile "Assets/Settings/Build Profiles/<이름>.asset"`(`-Method` 대신, `run-all.ps1`도 받는다).
 - 둘 다 없으면 사용자 동의를 받고 템플릿을 넣는다(Unity 2021.2 이상). Snapshot **뒤에** `templates\EmuProjectBuild.cs`와 `templates\EmuLab.Editor.asmdef` **두 파일을 새 폴더** `Assets\EmuLab\Editor\`에 복사한다.
   기존 스크립트가 있는 폴더(`Assets\Editor\` 등)에 넣지 않는다. asmdef는 그 폴더와 하위 폴더의 스크립트를 모두 가져가므로 프로젝트의 에디터 스크립트가 컴파일되지 않는다.
-  `-Method EmuProjectBuild.BuildApk` 또는 `EmuProjectBuild.BuildWebGL`. Build Settings에 켜 둔 씬을 현재 설정 그대로 빌드한다. 켜진 씬이 없으면 실패하니 어떤 씬을 빌드할지 사용자에게 묻는다.
-  그 빌드 동안만 Build App Bundle·Export Project·Split APKs by target architecture를 끄고, 끝나면(실패해도) 원래 값으로 되돌린다. 커스텀 키스토어 암호가 batchmode에 없으면 디버그 키스토어로 서명한다.
+  `-Method EmuProjectBuild.BuildApk`, `EmuProjectBuild.BuildWebGL` 또는 `EmuProjectBuild.BuildWindows`. Build Settings에 켜 둔 씬을 현재 설정 그대로 빌드한다. 켜진 씬이 없으면 실패하니 어떤 씬을 빌드할지 사용자에게 묻는다.
+  Android는 그 빌드 동안만 Build App Bundle·Export Project·Split APKs by target architecture를 끄고, 끝나면(실패해도) 원래 값으로 되돌린다. 커스텀 키스토어 암호가 batchmode에 없으면 디버그 키스토어로 서명한다.
+  Windows는 그 빌드 동안만 Disable Unity Audio·Run In Background·Use Player Log를 켜고 되돌린다(아래 「Windows 판정」).
   끝나면 `Assets\EmuLab`(와 `.meta`)는 guard Report에 `created`로 나오고 Revert가 백업 폴더로 옮긴다. 커밋하지 않는다.
   `sample/EmuSmoke/Assets/Editor/EmuBuild.cs`와 `EmuSmoke.cs`는 샘플 전용이다. 회사명·앱 ID·씬 목록을 덮어쓰고 빈 씬을 만들므로 사용자 프로젝트에 복사하지 않는다. `run-all.ps1`도 샘플이 아니면 `-Method`나 `-BuildProfile` 없이는 빌드하지 않는다.
 - 빌드 로그의 `EMU_BUILD_WARN`·`EMU_BUILD_NOTE` 줄은 `build-unity.ps1`이 다시 찍는다. 그대로 보고한다.
@@ -108,7 +111,7 @@
 - 에뮬레이터(API 35 x86_64)는 `x86_64`·`arm64-v8a` 코드만 돌린다. Mono 백엔드(ARMv7만)나 ARMv7만 체크한 빌드는 설치할 수 없다. 스모크가 설치 전에 `apk_abis`로 먼저 알리고, `doctor.ps1`은 `project-abi`로 미리 알린다.
   AVD를 다시 만들거나 ProjectSettings를 직접 고치지 않는다. 사용자 동의 후 그 빌드에서만 IL2CPP + ARM64로 빌드한다. 템플릿이면 `-EmuArm64` 스위치(`run-all.ps1`·`build-unity.ps1`, `-File`로 된다, `-Method`가 필요하다)가 그 빌드 동안만 바꾸고 되돌린다.
   자체 빌드 메서드면 그 안에서 같은 방식으로 한다. 큰 프로젝트의 첫 IL2CPP 빌드는 `-TimeoutMinutes 90` 정도로 늘린다. 보고에 「배포 빌드와 다른 바이너리로 테스트했다」고 적는다.
-- `run-all.ps1`은 다른 대상의 옵션(예: `-Target WebGL`에 `-NotifDelay`·`-Apk`, Android에 `-ReadyMode`·`-BuildDir`)과 `-SkipBuild`에 빌드 옵션을 섞으면 시작 전에 멈춘다.
+- `run-all.ps1`은 다른 대상의 옵션(예: `-Target WebGL`에 `-NotifDelay`·`-Apk`, Android에 `-ReadyMode`·`-BuildDir`·`-Tap`, Windows에 `-Headless`·`-NoTap`)과 `-SkipBuild`에 빌드 옵션을 섞으면 시작 전에 멈춘다.
 
 ### Android 판정
 
@@ -132,6 +135,25 @@
 - 페이지 자체 오류 UI: `-FailExpression "<오류일 때 문자열을 돌려주는 JS>"`.
 - 배포처가 COOP/COEP를 보내지 않는 단일 스레드 빌드(GitHub Pages 등)는 `-NoIsolation`으로 같은 조건을 만든다.
 - 예: `scripts\run-all.ps1 -Target WebGL -SkipBuild -BuildDir <폴더> -ReadyMode Loaded -NoTapCheck`. 상태를 노출하는 템플릿 예는 README의 「예: 상태를 노출하는 커스텀 템플릿」에 있다.
+
+### Windows 판정
+
+- Windows Standalone(64비트 exe)은 이 PC 바탕화면에서 창 모드로 띄운다(`-Width`·`-Height`, 기본 1280×720). 에뮬레이터·임대가 없다. 세션 0(서비스·예약 작업)에서는 못 띄운다(doctor `windows-desktop`).
+- 빌드: 템플릿이면 `-Method EmuProjectBuild.BuildWindows`, `-Out`은 `.exe` 파일(옆에 `<이름>_Data` 등이 생긴다). 기본 출력은 `artifacts\builds\<폴더명>-<해시8>\Windows\app.exe`.
+  프로젝트의 Windows 스크립팅 백엔드를 그대로 쓴다. IL2CPP면 Windows Build Support (IL2CPP) 모듈과 Visual Studio C++ 도구가 필요하다(doctor `project-modules`·`windows-il2cpp-cpp`, 설치는 사용자).
+- 소리(규칙 4): `smoke-windows.ps1`은 exe 옆 빌드 로그(`<이름>.build.log`, exe보다 새 것)에 `EMU_BUILD_NOTE audio-off:` 줄이 있어야 띄운다. 템플릿·샘플의 Windows 빌드가 그 빌드 동안만 Disable Unity Audio를 켜고 이 줄을 찍는다.
+  자체 메서드·빌드 프로필·에디터 빌드처럼 줄이 없으면 시작 전에 멈춘다. 소리가 나도 되는지 사용자에게 묻고 「예」일 때만 `-AllowAudio`를 붙인다. 플레이어를 무음으로 띄우는 명령줄 스위치는 없다(`-disableaudio`는 6000.6에서 효과 없음 확인). 시스템 음량·음소거·볼륨 믹서는 건드리지 않는다.
+  보고에 「소리 끈 테스트 빌드라 배포 빌드와 바이너리가 다르다」고 적는다. 템플릿은 그 빌드 동안 Run In Background·Use Player Log도 켠다(`EMU_BUILD_NOTE`).
+- 준비: `-ReadyMarker "<Player.log에 찍히는 줄>"`(기본 `SMOKE_APP_READY`). 로그는 `-logFile <결과 폴더>\Player.log`로 받는다. Player.log가 비면 Use Player Log가 꺼진 빌드, 시간 초과면 Run In Background가 꺼진 빌드일 수 있다(템플릿은 둘 다 켠다).
+- 탭: 기본은 없다. `-Tap [-TapX 0.5 -TapY 0.5] [-TapMarker "<줄>" | -NoTapCheck]`일 때만 실제 마우스(SendInput)로 누른다. 플레이어 창을 앞으로 올리고 포커스를 가져가며 커서를 잠깐 옮긴다(되돌림).
+  창이 그 점 아래에 없거나 화면 밖이면 누르지 않고 `tap_point`에 이유를 남긴다. 사용자가 PC를 쓰는 중이면 `-Tap` 전에 알린다.
+- 판정: 준비 마커, `crash`(Player.log `Crash!!!`, `%TEMP%\<회사>\<제품>\Crashes\`의 새 폴더, 0xC0000005 같은 종료 코드), `app_exited`(크래시 없이 스스로 종료, 종료 코드 기록), `dialog`(「Failed to load mono」 같은 오류 대화상자), `data_dir`(`<이름>_Data` 없음).
+  C# 예외는 `exceptions`·`first_exception`으로 세기만 하고 `-FailOnException`일 때만 FAIL. 끝나면 이 실행이 띄운 플레이어만 닫는다(WM_CLOSE, 안 닫히면 그 프로세스 트리만 종료).
+- PlayerPrefs: Windows 플레이어는 `HKCU\Software\<회사>\<제품>`(`<이름>_Data\app.info`)에 남기고, 실행할 때마다 창 크기를 쓴다. 기본은 건드리지 않고 `prefs_key`·`PREFS_LEFT`로 경로만 알린다. 보고에 적는다.
+  사용자가 지우라고 할 때만 `-CleanPrefs`: 그 키 하나를 결과 폴더에 `reg export`(`prefs-before.reg`)한 뒤 지우고 시작하고, 끝나면 다시 내보내(`prefs-after.reg`) 지운다. 다른 키는 건드리지 않는다. 되돌리기는 `reg import <파일>`.
+- 플레이어 인자는 `-ExeArgs @('-이름','값')`(`-Command`로만). 같은 exe가 이미 떠 있으면(사용자가 플레이 중 등) 멈춘다. 대신 끄지 않는다.
+- 패키지(MSIX) 앱 안 셸이면(doctor `packaged-host`) 플레이어의 PlayerPrefs·크래시 폴더가 그 앱 전용 사본에 남을 수 있다. 일반 터미널의 `reg query`에는 안 보일 수 있다고 보고에 적는다.
+- 예: `scripts\run-all.ps1 -Target Windows -ProjectPath <p> -Method EmuProjectBuild.BuildWindows -ReadyMarker "<로그>"`, 빌드가 있으면 `scripts\run-all.ps1 -Target Windows -SkipBuild -Exe <exe> -ReadyMarker "<로그>"`. 결과 끝 줄 `WINDOWS_SMOKE PASS/FAIL`.
 
 ## npm 패키지 `unity-emu-lab` (MCP 서버 + CLI)
 

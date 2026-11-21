@@ -13,7 +13,7 @@ Self-test Unity Android builds on an emulator, and Unity WebGL builds in a brows
 
 Device-control MCP servers such as `@mobilenext/mobile-mcp` or `appium-mcp` hand screenshots and taps to the agent; this package judges the build instead. You can use both, but not at the same time as `emu_smoke` / `emu_check_notification`: both need Android's single UiAutomation connection.
 
-The repository also contains Windows PowerShell scripts (`scripts/`, documented in Korean in [README.md](README.md)) that add Unity batchmode builds, a project guard and SDK setup. Both share the same lease file and respect each other's leases.
+The repository also contains Windows PowerShell scripts (`scripts/`, documented in Korean in [README.md](README.md)) that add Unity batchmode builds, a Windows Standalone smoke test (the player exe runs windowed on this desktop from a muted test build; `Player.log` ready marker, crash / self-exit / error dialog verdicts, a real mouse click only with `-Tap`, PlayerPrefs left alone unless `-CleanPrefs`), a project guard and SDK setup. Both share the same lease file and respect each other's leases.
 
 ## Requirements
 

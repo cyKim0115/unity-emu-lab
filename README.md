@@ -6,13 +6,14 @@ Unity 빌드를 내 PC에서 실제로 띄워 **사람·AI 에이전트가 직�
 
 - **Android**: 에뮬레이터에 설치해 앱 안(로그 마커·탭 입력)과 앱 밖(시스템 대화상자·알림창·알림 탭 복귀)을 확인한다.
 - **WebGL**: 로컬 서버로 띄워 Chrome/Edge/Chromium을 DevTools 프로토콜로 조종한다.
+- **Windows**: 이 PC 바탕화면에서 exe를 창 모드로 띄워 `Player.log` 마커·크래시·스스로 종료·오류 대화상자를 가린다(PowerShell 스크립트만).
 
 두 가지 형태로 쓴다.
 
 | 형태 | 하는 일 | 실행 환경 |
 |---|---|---|
 | npm 패키지 `unity-emu-lab` (MCP 서버 + `emu-lab` CLI) | Android: 에뮬레이터 임대, 기동·놓기, 스모크, 앱 밖 알림 확인, 기기 시계, 스크린샷. APK를 받는다. WebGL: 빌드 폴더를 받아 브라우저 스모크 | Node.js 22.18+, Windows·macOS·Linux |
-| PowerShell 스크립트 (`scripts/`) | 위 기능 + Unity batchmode 빌드, 프로젝트 보호(`project-guard`), SDK 설치·점검 | Windows PowerShell 5.1 |
+| PowerShell 스크립트 (`scripts/`) | 위 기능 + Windows 플레이어 스모크, Unity batchmode 빌드, 프로젝트 보호(`project-guard`), SDK 설치·점검 | Windows PowerShell 5.1 |
 
 둘은 같은 임대 파일(`~/.emu-lab/leases/<AVD>.json`)을 써서, 함께 돌아도 서로의 임대를 존중한다.
 
@@ -182,13 +183,13 @@ npm 패키지에는 `bin/`과 컴파일된 `dist/`만 들어간다(`npm publish`
 
 저장소는 Unity 프로젝트 폴더와 그 git 저장소 **밖**에 받는다(예: `git clone <url> %USERPROFILE%\unity-emu-lab`). 그 폴더에서 쓰는 AI(Claude Code·Cursor·Codex)에게 이렇게 말하면 된다.
 
-> 이 저장소의 AGENTS.md 절차대로 내 PC에 설치하고, 샘플로 확인한 다음 `<내 Unity 프로젝트 경로>`에 붙여 Android(또는 WebGL) 빌드·테스트까지 해줘.
+> 이 저장소의 AGENTS.md 절차대로 내 PC에 설치하고, 샘플로 확인한 다음 `<내 Unity 프로젝트 경로>`에 붙여 Android(또는 WebGL·Windows) 빌드·테스트까지 해줘.
 
 AI는 `AGENTS.md`를 따른다(Claude Code는 `CLAUDE.md`가 이를 불러온다). 아래는 **사람이 직접 하는 일**이다. AI가 `scripts\doctor.ps1` 결과의 `[HUMAN]` 줄로 알려 준다.
 
 | 할 일 | 언제 |
 |---|---|
-| Unity Hub에서 프로젝트 버전 에디터 + **Android Build Support**(OpenJDK, Android SDK & NDK Tools) / **WebGL Build Support** 모듈 설치 | 없을 때 |
+| Unity Hub에서 프로젝트 버전 에디터 + **Android Build Support**(OpenJDK, Android SDK & NDK Tools) / **WebGL Build Support** / (IL2CPP 프로젝트의 Windows) **Windows Build Support (IL2CPP)** + Visual Studio C++ 설치 | 없을 때 |
 | 샘플 확인용 **Unity 6000.6.0f1**(정확한 버전, Hub 아카이브) + 쓸 대상 모듈 설치. 건너뛰려면 AI에게 「샘플 확인은 생략」 | 샘플로 먼저 확인할 때 |
 | Android SDK 설치용 **JDK 17**: Unity 6 에디터(OpenJDK 17) + Android Build Support, 또는 Unity External Tools·`JAVA_HOME`의 JDK 17. 프로젝트가 2022.3이어도 필요 | JDK 17이 없을 때 |
 | BIOS의 CPU 가상화, Windows 기능 **Windows 하이퍼바이저 플랫폼** 켜기(관리자, 재부팅) | Android 에뮬레이터 가속이 안 될 때 |
@@ -212,17 +213,18 @@ Python·Node·Playwright 없이 PowerShell 5.1만으로 돈다.
 | `scripts/setup-android-sdk.ps1` | 독립 Android SDK에 emulator·platform-tools·시스템 이미지 설치, AVD 생성. Unity에 딸린(또는 External Tools) JDK 17·cmdline-tools로 부트스트랩. `-SdkRoot`/`-AvdHome`은 `local.settings.json`(git 제외)에 남는다. `-Proxy host:port`. 끝 줄 `SETUP_DONE accel=ok`(0) 또는 `accel=missing`(2) |
 | `scripts/start-emulator.ps1` | AVD 임대를 잡고(남이 잡고 있으면 `BUSY`로 멈춤, 같은 주인이면 연장) 부팅(기본 창 모드, 무음), 부팅 완료 대기, 애니메이션 끄기·전체화면 첫 안내 끄기, 이전 실행이 앞당겨 둔 시계 복구(`TIME_RESET`) |
 | `scripts/release-emulator.ps1` | 임대 놓기: Firebase 디버그 모드·`log.tag.FA` 끄기, 앞당긴 시계 복구, (`-Uninstall`) 이 임대에서 설치한 앱 제거, 이 임대가 띄운 에뮬레이터만 끄기, 임대 파일 삭제. 남의 임대는 `-AnyOwner`, 시간이 지난 임대는 `-Stale`(사람만) |
-| `scripts/build-unity.ps1` | Unity batchmode 빌드(`-Target Android\|WebGL`). `-Method`(빌드 메서드) 또는 `-BuildProfile`(Unity 6 빌드 프로필). 이번 빌드가 `-Out`에 새로 쓴 경우에만 `BUILD_OK`. 호출자가 죽으면 숨은 Unity도 끈다. 출력 기본값은 `artifacts\builds\<폴더>-<해시8>\`. `build-android.ps1`은 Android 단축 |
+| `scripts/build-unity.ps1` | Unity batchmode 빌드(`-Target Android\|WebGL\|Windows`). `-Method`(빌드 메서드) 또는 `-BuildProfile`(Unity 6 빌드 프로필). 이번 빌드가 `-Out`에 새로 쓴 경우에만 `BUILD_OK`. 호출자가 죽으면 숨은 Unity도 끈다. 출력 기본값은 `artifacts\builds\<폴더>-<해시8>\`. `build-android.ps1`은 Android 단축 |
 | `scripts/smoke-webgl.ps1` | WebGL 빌드를 로컬 서버로 띄우고 브라우저(임시 프로필, 무음)로 열어 준비 확인 → 캔버스 클릭 → 콘솔 오류·경고창·Unity 오류 배너 수집. 결과는 `artifacts\<시각>-webgl-<PID>\` |
+| `scripts/smoke-windows.ps1` | Windows 플레이어를 이 PC에서 창 모드로 띄워 `Player.log` 준비 마커 → (`-Tap`일 때만) 실제 마우스 클릭 → 창 캡처, 크래시·스스로 종료·오류 대화상자·C# 예외 구분. 소리 끈 빌드만 띄움. 결과는 `artifacts\<시각>-windows-<PID>\` |
 | `scripts/serve-static.ps1`, `scripts/cdp.ps1` | 관리자 권한 없는 정적 서버(`.br`·`.gz`에 Content-Encoding), PowerShell 5.1용 DevTools 클라이언트 |
 | `scripts/smoke-test.ps1` | 설치 → 실행 → 준비 마커 → 탭 → 홈 → 로컬 알림 확인 → 알림 탭 복귀. 결과는 `artifacts\<시각>-smoke-<PID>\` |
 | `scripts/check-notification.ps1` | 앱 밖에서 알림 확인: `dumpsys notification` → 알림창 펼치기 + `uiautomator dump` → (옵션) 탭해서 앱 복귀 |
 | `scripts/time-travel.ps1` | 기기 시계를 앞당겨 몇 시간 뒤 알림을 바로 확인. `-Reset`으로 복구(두 번 해도 된다) |
 | `scripts/run-all.ps1` | 부팅 → 빌드 → 스모크 한 번에. 다른 대상의 옵션을 섞으면 시작 전에 멈춘다 |
 | `scripts/watch-parent.ps1` | 감시 프로세스: 호출자가 강제 종료되면 서버·브라우저·logcat(`-Match`), 숨은 Unity(`-ChildPid`)를 끄고 기기 시계를 되돌린다(`-ResetClock`) |
-| `sample/EmuSmoke` | 검증용 Unity 6.6 프로젝트(Mobile Notifications 2.5.0, OnGUI, `SMOKE_*` 로그 마커) |
+| `sample/EmuSmoke` | 검증용 Unity 6.6 프로젝트(Mobile Notifications 2.5.0, OnGUI, `SMOKE_*` 로그 마커. Windows 플레이어는 `-emuSmokeFault crash\|exception\|quit`로 일부러 실패) |
 | `scripts/project-guard.ps1` | 사용자 프로젝트 빌드 전후 보호: `Snapshot`(첫 빌드 전 한 번. 작업 중 변경 기록, 추적 파일만 패치 백업) → `Report`(빌드가 바꾼 것) → 동의 후 `Revert`(Report에 있던 빌드 변경만 되돌리고 새 파일은 백업으로 이동, 남길 파일은 `-Keep`). 두 번째 Snapshot은 그사이 변경이 있으면 `-Replace` 없이 멈추고, Unity가 프로젝트를 잡고 있거나 Report 뒤 내용·커밋이 바뀌면 Report·Revert가 멈춘다. Revert 뒤 기록은 보관 처리. 한글·공백·대괄호 경로, 하위 폴더 프로젝트 지원 |
-| `templates/EmuProjectBuild.cs`, `templates/EmuLab.Editor.asmdef` | 빌드 메서드가 없는 사용자 프로젝트용 batchmode 빌드 진입점(Unity 2021.2+). 동의 후 두 파일을 **새 폴더** `Assets/EmuLab/Editor/`에 복사, 커밋하지 않음. 켜진 씬을 현재 설정으로 빌드하고, 그 빌드 동안만 AAB·Export Project·ABI별 분할을 끄고 되돌린다. 키스토어 암호가 없으면 디버그 서명. Mono 프로젝트는 `-EmuArm64`로 그 빌드만 IL2CPP + ARM64 |
+| `templates/EmuProjectBuild.cs`, `templates/EmuLab.Editor.asmdef` | 빌드 메서드가 없는 사용자 프로젝트용 batchmode 빌드 진입점(Unity 2021.2+). 동의 후 두 파일을 **새 폴더** `Assets/EmuLab/Editor/`에 복사, 커밋하지 않음. 켜진 씬을 현재 설정으로 빌드하고, 그 빌드 동안만 AAB·Export Project·ABI별 분할을 끄고 되돌린다. 키스토어 암호가 없으면 디버그 서명. Mono 프로젝트는 `-EmuArm64`로 그 빌드만 IL2CPP + ARM64. `BuildWindows`는 그 빌드 동안만 Disable Unity Audio·Run In Background·Use Player Log를 켜고 되돌린다 |
 | `.mcp.json`, `.cursor/mcp.json` | 에이전트용 `mobile-mcp`(1.0.12): 스크린샷·탭·스와이프·요소 목록·앱 설치. Codex는 전역 설정이라 사용자 승인 후 추가(`AGENTS.md`) |
 
 Unity 에디터는 `UNITY_EDITOR_ROOT`, Unity Hub 설치 위치(Preferences > Installs), 기본 위치(`C:\Program Files\Unity\Hub\Editor`), Hub에 「Locate」로 추가한 에디터 순으로 찾는다. 같은 버전이 두 곳에 있으면 앞의 것을 쓴다.
@@ -242,7 +244,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\doctor.ps1 -Target A
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup-android-sdk.ps1 -AcceptLicenses
 ```
 
-`-Target`은 쓰는 대상만 준다(`Android`, `WebGL`, 둘 다 `Both`). 프로젝트까지 보려면 `-ProjectPath <프로젝트>`, 샘플 확인을 건너뛰려면 `-NoSample`.
+`-Target`은 쓰는 대상만 준다(`Android`, `WebGL`, `Windows`, Android와 WebGL 둘 다 `Both`). 프로젝트까지 보려면 `-ProjectPath <프로젝트>`, 샘플 확인을 건너뛰려면 `-NoSample`.
 
 `-AcceptLicenses`는 Android SDK 라이선스 동의다. 받는 양: emulator 약 1.0GB, 시스템 이미지 약 3.5GB(압축 해제 기준).
 
@@ -323,6 +325,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\smoke-webgl.ps1 -Bui
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\smoke-test.ps1 -Apk <apk> -NotifDelay 7200 -TimeTravelMinutes 185
 ```
 
+#### Windows
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-all.ps1 -Target Windows
+```
+
+이 PC 바탕화면에서 Windows 플레이어(exe)를 창 모드로 띄워 판정한다. 에뮬레이터·브라우저·임대가 없다. 필요한 것: Unity의 Windows Build Support(Windows 에디터에 Mono가 딸려 온다. 프로젝트가 IL2CPP면 IL2CPP 모듈 + Visual Studio의 「C++를 사용한 데스크톱 개발」).
+결과 예(2026-11-21 실측, 6000.6.0f1 Mono 개발 빌드 41.7MB): 첫 빌드 46초(플랫폼 전환 포함)·증분 14초, 준비 4~8초, 전체 30초 안팎.
+
+- 빌드: `EmuProjectBuild.BuildWindows`(템플릿)와 샘플 `EmuBuild.BuildWindows`는 그 빌드 동안만 **Disable Unity Audio**를 켜고 끝나면 되돌린다(`EMU_BUILD_NOTE audio-off:`). 소리 끈 테스트 빌드라 배포 빌드와 바이너리가 다르다.
+  템플릿은 Run In Background·Use Player Log도 그 빌드 동안만 켠다. `-Out`은 `.exe`, 기본 출력은 `artifacts\builds\<폴더>-<해시8>\Windows\app.exe`(샘플은 `Builds\Windows\app.exe`).
+- 소리: 플레이어를 무음으로 띄우는 명령줄 스위치가 없다(`UnityPlayer.dll`에 `disableaudio` 문자열이 있지만 `-disableaudio`를 줘도 오디오 시계가 돌았다). 그래서 `smoke-windows.ps1`은 exe 옆 빌드 로그에 `audio-off` 줄이 있을 때만 띄우고,
+  없으면(자체 빌드 메서드·빌드 프로필·에디터 빌드) 시작 전에 멈춘다. 소리가 나도 되면 `-AllowAudio`. 시스템 음량·음소거·볼륨 믹서는 건드리지 않는다.
+- 준비: `-logFile <결과 폴더>\Player.log`로 받은 로그에서 `-ReadyMarker`(기본 `SMOKE_APP_READY`)를 기다린다. `-screen-fullscreen 0 -screen-width/-height`로 창 모드(`-Width`·`-Height`, 기본 1280×720).
+- 판정: `crash`(Player.log `Crash!!!`, `%TEMP%\<회사>\<제품>\Crashes\`의 새 폴더, NTSTATUS 종료 코드), `app_exited`(크래시 없이 스스로 종료), `dialog`(오류 대화상자 글), `data_dir`(`<이름>_Data` 없음)는 FAIL.
+  C# 예외는 `exceptions`·`first_exception`으로 세기만 하고 `-FailOnException`이면 FAIL. 끝나면 이 실행이 띄운 플레이어만 WM_CLOSE로 닫고, 안 닫히면 그 프로세스 트리만 끈다. 같은 exe가 이미 떠 있으면 시작하지 않는다.
+  샘플 `-ExeArgs @('-emuSmokeFault','crash'|'exception'|'quit')`로 확인: 크래시 FAIL(`0xC0000005`, 크래시 폴더), 예외 PASS(`exceptions=1`)·`-FailOnException` FAIL, 종료 FAIL(`exit_code=3`), `app_Data`를 지운 복사본 FAIL, `MonoBleedingEdge`를 지운 복사본 FAIL(대화상자 「Failed to load mono」).
+- 스크린샷: `PrintWindow`로 플레이어 창 클라이언트 영역만 찍는다(다른 창에 가려져도 됨, 화면 복사는 창이 맨 앞일 때만). `01-ready.png`, `02-after-tap.png`, `03-final.png`.
+- 탭: 기본은 없다. `-Tap [-TapX -TapY -TapMarker | -NoTapCheck]`일 때만 실제 마우스 입력(SendInput)으로 누른다. **플레이어 창을 앞으로 올려 포커스를 가져가고 커서를 잠깐 옮긴다**(되돌림).
+  창이 최소화돼 있으면 복원하고, 그 점이 화면 밖이거나 다른 창이 덮고 있으면 누르지 않는다.
+- PlayerPrefs: 플레이어는 `HKCU\Software\<회사>\<제품>`에 남기고 실행할 때마다 창 크기를 쓴다. 기본은 두고 `prefs_key`·`PREFS_LEFT`로 알린다. `-CleanPrefs`면 그 키 하나만 결과 폴더에 `reg export`한 뒤 지우고 시작하고(`prefs-before.reg`), 끝나면 다시 내보내 지운다(`prefs-after.reg`). 되돌리기 `reg import <파일>`.
+- 플레이어 인자는 `-ExeArgs @(...)`(`powershell -Command`로만). 결과는 `artifacts\<시각>-windows-<PID>\`(`Player.log`, PNG, `summary.json`), 끝 줄 `WINDOWS_SMOKE PASS/FAIL`.
+- Claude 데스크톱 같은 패키지(MSIX) 앱 안에서 띄우면 플레이어의 PlayerPrefs·크래시 폴더가 그 앱 전용 사본에 남을 수 있다(doctor `packaged-host`).
+
 ### 다른 프로젝트에 붙이기 (Android)
 
 빌드 전후는 `project-guard.ps1`로 감싼다(첫 빌드 전 `Snapshot`, 마지막 빌드 뒤 `Report`, 동의 후 `Revert`. `AGENTS.md` 규칙 5).
@@ -385,4 +411,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\smoke-test.ps1 -Apk 
 
 - Unity는 에뮬레이터를 공식 지원하지 않는다. 성능·발열·GPU 드라이버 차이는 실기기에서 따로 본다(여기 수치는 ARM 변환 위 수치).
 - iOS는 범위 밖(Windows에서 불가).
+- Windows 스모크는 격리 환경이 아니라 사용자 바탕화면에서 돈다. 이 PC의 GPU·드라이버 결과이고, 다른 PC·Windows 버전은 따로 본다. macOS·Linux 플레이어는 아직 없다.
 - 자동 실행·예약 작업은 만들지 않았다. 필요할 때 사람이 스크립트를 실행한다.
