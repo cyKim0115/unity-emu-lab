@@ -17,8 +17,7 @@
    환경 변수 `ANDROID_SDK_ROOT`·`ANDROID_AVD_HOME`이 있으면 그 값이 이긴다(`ANDROID_HOME`은 무시한다. Android Studio SDK를 건드리지 않으려고). 위치를 처음으로 돌리려면 `local.settings.json`을 지운다.
 2. **시스템 설정은 바꾸지 않는다.** BIOS 가상화, Windows 기능 「Windows 하이퍼바이저 플랫폼」, 관리자 권한 작업, 재부팅은 `doctor.ps1`의 `[HUMAN]` 줄을 그대로 사용자에게 안내하고 기다린다.
 3. **Unity Hub 에디터·모듈 설치는 사용자가 한다.** Android/WebGL/Windows(IL2CPP) Build Support 같은 모듈과 Visual Studio C++ 도구는 수 GB라 대신 받지 않는다.
-4. **소리는 끈 채로 둔다.** 에뮬레이터 `-no-audio`, 브라우저 `--mute-audio` 기본값을 바꾸지 않는다. 사용자가 그 요청에서 직접 원할 때만 예외다.
-   Windows 플레이어는 소리를 끈 테스트 빌드(템플릿 `BuildWindows`)로만 띄운다. 그렇지 않은 빌드는 사용자가 소리를 허락할 때만 `-AllowAudio`(아래 「Windows 판정」). 시스템 음량·음소거·볼륨 믹서는 바꾸지 않는다.
+4. **소리는 끈 채로 둔다.** 에뮬레이터 `-no-audio`, 브라우저 `--mute-audio` 기본값을 바꾸지 않는다. 사용자가 그 요청에서 직접 원할 때만 예외다. Windows 플레이어는 소리를 끈 테스트 빌드(템플릿 `BuildWindows`)로만 띄운다. 그렇지 않은 빌드는 사용자가 소리를 허락할 때만 `-AllowAudio`(아래 「Windows 판정」). 시스템 음량·음소거·볼륨 믹서는 바꾸지 않는다.
 5. **사용자 프로젝트에서 작업 중인 변경은 건드리지 않는다.** 빌드는 ProjectSettings나 에셋 그룹을 바꿔 놓을 수 있다. 그 변경과 이 저장소 때문에 추가한 파일·코드 줄은 커밋하지 않는다. 사용자 프로젝트 쪽 자동 커밋 규칙이 있어도 이 작업에는 적용하지 않는다.
    빌드 전후 git 처리는 직접 하지 말고 `scripts\project-guard.ps1`로 한다. 한글·공백·대괄호 경로, 큰 저장소 안의 하위 폴더 프로젝트, PS 5.1 인코딩 문제를 이 스크립트가 처리한다.
    - **Snapshot은 첫 빌드 전에 한 번** 찍는다: `scripts\project-guard.ps1 -ProjectPath <p> -Mode Snapshot`. 템플릿 복사·`Debug.Log` 추가도 Snapshot **뒤에** 한다. 그래야 Report에 이 저장소 때문에 생긴 변경으로 잡혀 Revert로 치울 수 있다.
@@ -92,7 +91,6 @@
   `scripts\run-all.ps1 -ProjectPath <p> -Target Android|WebGL|Windows -Method <Class.Method> ...`(빌드부터 테스트까지) 또는 `scripts\build-unity.ps1 -ProjectPath <p> -Target Android|WebGL|Windows -Method <Class.Method> -Out <출력>`(빌드만).
   - 메서드는 받은 `-buildOut`(Android는 `-apkOut`도) 경로에 써야 한다. 다른 곳에 쓰는 메서드면 `-Out`을 실제로 쓰는 경로로 주거나, 메서드의 출력 인자를 `-ExtraArgs`로 같은 절대 경로로 넘긴다. 실패하면 `EditorApplication.Exit(1)`로 끝나야 한다.
   - Android `-Out`은 설치할 수 있는 `.apk` 파일 하나다(`.aab`, Export Project 폴더, ABI별 분할 APK는 안 된다). `build-unity.ps1`은 이번 빌드가 `-Out`에 새로 쓴 게 없거나 로그의 마지막 결과가 실패면 `BUILD_OK`를 찍지 않고 이유를 알린다.
-  - Windows `-Out`은 `.exe` 파일이다. Unity가 그 옆에 `<이름>_Data`·`UnityPlayer.dll` 등을 쓴다.
   - 출력 기본값은 프로젝트 밖인 이 저장소의 `artifacts\builds\<폴더명>-<해시8>\Android\app.apk`·`...\WebGL`·`...\Windows\app.exe`이다(샘플만 자기 `Builds\`). `run-all.ps1 -SkipBuild -ProjectPath <p>`는 그 기본 위치를 찾는다.
 - 메서드가 받는 다른 인자는 `-ExtraArgs`로 넘긴다. `-File`로는 배열과 `-`로 시작하는 값을 못 넘기므로 이때만 `-Command`로 부른다. 경로·값은 작은따옴표로 감싸고(값 안의 `'`는 `''`), 명령 안에 큰따옴표와 `$`는 쓰지 않는다.
   `-ExtraArgs` 안의 경로는 절대 경로로 쓴다. 스크립트는 `-Out`만 절대 경로로 바꾸고, Unity는 상대 경로를 사용자 프로젝트 기준으로 해석한다.
@@ -138,22 +136,13 @@
 
 ### Windows 판정
 
-- Windows Standalone(64비트 exe)은 이 PC 바탕화면에서 창 모드로 띄운다(`-Width`·`-Height`, 기본 1280×720). 에뮬레이터·임대가 없다. 세션 0(서비스·예약 작업)에서는 못 띄운다(doctor `windows-desktop`).
-- 빌드: 템플릿이면 `-Method EmuProjectBuild.BuildWindows`, `-Out`은 `.exe` 파일(옆에 `<이름>_Data` 등이 생긴다). 기본 출력은 `artifacts\builds\<폴더명>-<해시8>\Windows\app.exe`.
-  프로젝트의 Windows 스크립팅 백엔드를 그대로 쓴다. IL2CPP면 Windows Build Support (IL2CPP) 모듈과 Visual Studio C++ 도구가 필요하다(doctor `project-modules`·`windows-il2cpp-cpp`, 설치는 사용자).
-- 소리(규칙 4): `smoke-windows.ps1`은 exe 옆 빌드 로그(`<이름>.build.log`, exe보다 새 것)에 `EMU_BUILD_NOTE audio-off:` 줄이 있어야 띄운다. 템플릿·샘플의 Windows 빌드가 그 빌드 동안만 Disable Unity Audio를 켜고 이 줄을 찍는다.
-  자체 메서드·빌드 프로필·에디터 빌드처럼 줄이 없으면 시작 전에 멈춘다. 소리가 나도 되는지 사용자에게 묻고 「예」일 때만 `-AllowAudio`를 붙인다. 플레이어를 무음으로 띄우는 명령줄 스위치는 없다(`-disableaudio`는 6000.6에서 효과 없음 확인). 시스템 음량·음소거·볼륨 믹서는 건드리지 않는다.
-  보고에 「소리 끈 테스트 빌드라 배포 빌드와 바이너리가 다르다」고 적는다. 템플릿은 그 빌드 동안 Run In Background·Use Player Log도 켠다(`EMU_BUILD_NOTE`).
-- 준비: `-ReadyMarker "<Player.log에 찍히는 줄>"`(기본 `SMOKE_APP_READY`). 로그는 `-logFile <결과 폴더>\Player.log`로 받는다. Player.log가 비면 Use Player Log가 꺼진 빌드, 시간 초과면 Run In Background가 꺼진 빌드일 수 있다(템플릿은 둘 다 켠다).
-- 탭: 기본은 없다. `-Tap [-TapX 0.5 -TapY 0.5] [-TapMarker "<줄>" | -NoTapCheck]`일 때만 실제 마우스(SendInput)로 누른다. 플레이어 창을 앞으로 올리고 포커스를 가져가며 커서를 잠깐 옮긴다(되돌림).
-  창이 그 점 아래에 없거나 화면 밖이면 누르지 않고 `tap_point`에 이유를 남긴다. 사용자가 PC를 쓰는 중이면 `-Tap` 전에 알린다.
-- 판정: 준비 마커, `crash`(Player.log `Crash!!!`, `%TEMP%\<회사>\<제품>\Crashes\`의 새 폴더, 0xC0000005 같은 종료 코드), `app_exited`(크래시 없이 스스로 종료, 종료 코드 기록), `dialog`(「Failed to load mono」 같은 오류 대화상자), `data_dir`(`<이름>_Data` 없음).
-  C# 예외는 `exceptions`·`first_exception`으로 세기만 하고 `-FailOnException`일 때만 FAIL. 끝나면 이 실행이 띄운 플레이어만 닫는다(WM_CLOSE, 안 닫히면 그 프로세스 트리만 종료).
-- PlayerPrefs: Windows 플레이어는 `HKCU\Software\<회사>\<제품>`(`<이름>_Data\app.info`)에 남기고, 실행할 때마다 창 크기를 쓴다. 기본은 건드리지 않고 `prefs_key`·`PREFS_LEFT`로 경로만 알린다. 보고에 적는다.
-  사용자가 지우라고 할 때만 `-CleanPrefs`: 그 키 하나를 결과 폴더에 `reg export`(`prefs-before.reg`)한 뒤 지우고 시작하고, 끝나면 다시 내보내(`prefs-after.reg`) 지운다. 다른 키는 건드리지 않는다. 되돌리기는 `reg import <파일>`.
-- 플레이어 인자는 `-ExeArgs @('-이름','값')`(`-Command`로만). 같은 exe가 이미 떠 있으면(사용자가 플레이 중 등) 멈춘다. 대신 끄지 않는다.
-- 패키지(MSIX) 앱 안 셸이면(doctor `packaged-host`) 플레이어의 PlayerPrefs·크래시 폴더가 그 앱 전용 사본에 남을 수 있다. 일반 터미널의 `reg query`에는 안 보일 수 있다고 보고에 적는다.
-- 예: `scripts\run-all.ps1 -Target Windows -ProjectPath <p> -Method EmuProjectBuild.BuildWindows -ReadyMarker "<로그>"`, 빌드가 있으면 `scripts\run-all.ps1 -Target Windows -SkipBuild -Exe <exe> -ReadyMarker "<로그>"`. 결과 끝 줄 `WINDOWS_SMOKE PASS/FAIL`.
+- 이 PC 바탕화면에서 exe를 창 모드로 띄운다(임대 없음, 세션 0에서는 안 됨). 템플릿은 `-Method EmuProjectBuild.BuildWindows`, `-Out`은 `.exe`(기본 `artifacts\builds\<폴더명>-<해시8>\Windows\app.exe`). 프로젝트 백엔드가 IL2CPP면 IL2CPP 모듈과 Visual Studio C++ 도구가 필요하다(doctor `[HUMAN]`, 설치는 사용자).
+- 소리(규칙 4): `smoke-windows.ps1`은 exe 옆 빌드 로그에 `EMU_BUILD_NOTE audio-off:` 줄(템플릿·샘플 빌드가 찍음)이 있어야 띄우고, 없으면 시작 전에 멈춘다. 그때는 소리가 나도 되는지 사용자에게 묻고 「예」일 때만 `-AllowAudio`. 무음 명령줄 스위치는 없다. 보고에 「소리 끈 테스트 빌드라 배포 빌드와 바이너리가 다르다」고 적는다.
+- 준비: `-ReadyMarker "<Player.log 줄>"`(기본 `SMOKE_APP_READY`). Player.log가 비거나 시간 초과면 Use Player Log·Run In Background가 꺼진 빌드일 수 있다(템플릿은 그 빌드 동안 켠다).
+- 탭: 기본 없음. `-Tap [-TapX -TapY] [-TapMarker "<줄>" | -NoTapCheck]`일 때만 실제 마우스로 누르며 포커스를 가져간다. 사용자가 PC를 쓰는 중이면 먼저 알린다.
+- 판정: `crash`(`Crash!!!`·크래시 폴더·NTSTATUS 종료 코드), `app_exited`, `dialog`, `data_dir`는 FAIL. C# 예외는 `-FailOnException`일 때만 FAIL. 이 실행이 띄운 플레이어만 닫고, 같은 exe가 이미 떠 있으면 멈춘다(대신 끄지 않는다).
+- PlayerPrefs(`HKCU\Software\<회사>\<제품>`)는 기본으로 두고 `PREFS_LEFT` 경로를 보고에 적는다. 사용자가 지우라고 할 때만 `-CleanPrefs`(그 키만 `reg export` 백업 뒤 삭제). 패키지 앱 안 셸이면(`packaged-host`) 그 키·크래시 폴더가 앱 전용 사본에 남을 수 있다.
+- 예: `scripts\run-all.ps1 -Target Windows -ProjectPath <p> -Method EmuProjectBuild.BuildWindows -ReadyMarker "<로그>"`(빌드가 있으면 `-SkipBuild -Exe <exe>`). 플레이어 인자는 `-ExeArgs`(`-Command`로만). 자세한 판정·옵션은 README 「Windows」.
 
 ## npm 패키지 `unity-emu-lab` (MCP 서버 + CLI)
 
