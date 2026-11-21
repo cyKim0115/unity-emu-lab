@@ -156,8 +156,14 @@ Windows는 `ANDROID_HOME`을 일부러 무시한다(Android Studio의 SDK를 건
 ### 검증 범위
 
 2026-11-20, Windows 10 + Node.js 24.18: 기기 없는 시험 281개(가짜 adb), PowerShell 5.1 스크립트와의 임대 상호 시험(양쪽 BUSY), Unity 6000.6.0f1 샘플 APK(IL2CPP ARM64)의 패키지·ABI 읽기.
-2026-11-21, 같은 PC: 시험 311개. 그중 WebGL 스모크 시험은 실제 Chrome 157(headless)로 가짜 빌드 폴더(Brotli·Gzip 빌드 파일, 경고창, 빠진 `/Build/` 파일, 잡히지 않은 오류, 검은 캔버스, C# 예외 로그)를 돌린다.
-실제 에뮬레이터(Android 15, API 35 `google_apis` x86_64)로 하는 npm 패키지 확인과 실제 Unity WebGL 빌드로 하는 `emu-lab webgl` 확인은 아직이다(같은 환경에서 PowerShell 스크립트는 둘 다 확인함).
+2026-11-21, 같은 PC: 시험 318개(1개는 샘플 APK를 읽는 시험이라 APK를 빌드하지 않은 그날은 건너뜀). 그중 WebGL 스모크 시험은 실제 Chrome 157(headless)로 가짜 빌드 폴더(Brotli·Gzip 빌드 파일, 경고창, 빠진 `/Build/` 파일, 잡히지 않은 오류, 검은 캔버스, C# 예외 로그)를 돌린다.
+
+**아직 확인하지 않은 것(0.1.0 기준)**
+
+- Android: npm 패키지의 Android 경로(`start`·`smoke`·`notification`·`clock`·`release`와 같은 일을 하는 MCP 도구)는 위의 가짜 adb 단위 시험과 Windows·macOS·Linux CI까지만 확인했다. 실제 에뮬레이터에서는 아직 돌려 보지 않았다.
+- WebGL: `emu-lab webgl`·`emu_webgl_smoke`는 실제 Chrome(headless)으로 가짜 빌드 폴더를 돌렸지만, 실제 Unity WebGL 빌드로는 아직 확인하지 않았다.
+
+PowerShell 스크립트는 둘 다 실제 환경(Android 15, API 35 `google_apis` x86_64 에뮬레이터, 실제 Unity WebGL 빌드)에서 확인했다.
 CI는 Windows·macOS·Linux × Node.js 22·24에서 기기 없는 시험과 실제 브라우저 WebGL 시험을 돌리고, Windows에서는 PowerShell과의 임대 상호 시험, `.ps1` 검사(`scripts\check-scripts.ps1`), PowerShell WebGL 스모크도 돌린다. 에뮬레이터 PASS는 실기기 인증이 아니다.
 
 ### 개발

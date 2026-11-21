@@ -121,9 +121,14 @@ If the same PC also builds Android with Unity, use one adb (`EMU_ADB` or `config
 
 ## Tested
 
-2026-11-20 on Windows 10 with Node.js 24.18: 281 device-free tests (fake adb), lease interop with the Windows PowerShell 5.1 scripts (BUSY both ways), and reading the package and ABIs of the Unity 6000.6.0f1 sample APK (IL2CPP ARM64). 2026-11-21 on the same PC: 311 tests, among them the WebGL smoke tests in a real headless Chrome 157 against fake build folders (Brotli and Gzip build files, a dialog, a missing `/Build/` file, an uncaught error, a black canvas, a logged C# exception).
+2026-11-20 on Windows 10 with Node.js 24.18: 281 device-free tests (fake adb), lease interop with the Windows PowerShell 5.1 scripts (BUSY both ways), and reading the package and ABIs of the Unity 6000.6.0f1 sample APK (IL2CPP ARM64). 2026-11-21 on the same PC: 318 tests (one skipped: it reads the sample APK, which was not built that day), among them the WebGL smoke tests in a real headless Chrome 157 against fake build folders (Brotli and Gzip build files, a dialog, a missing `/Build/` file, an uncaught error, a black canvas, a logged C# exception).
 
-Still to come: this npm package against a real emulator (Android 15, API 35 `google_apis` x86_64) and `emu-lab webgl` against a real Unity WebGL build; the PowerShell scripts were checked on both. CI runs the device-free tests and the real-browser WebGL tests on Windows, macOS and Linux with Node.js 22 and 24, and on Windows also the lease interop tests, the `.ps1` check (`scripts\check-scripts.ps1`) and the PowerShell WebGL smoke test. An emulator PASS is not a device certification.
+**Not checked yet (as of 0.1.0):**
+
+- Android: the npm package's Android path (`start`, `smoke`, `notification`, `clock`, `release` and the matching MCP tools) has been checked only with the fake-adb tests above and in CI on Windows, macOS and Linux. It has not run against a real emulator yet.
+- WebGL: `emu-lab webgl` / `emu_webgl_smoke` has run in a real headless Chrome against fake build folders, not against a real Unity WebGL build.
+
+The PowerShell scripts were checked on both: a real emulator (Android 15, API 35 `google_apis` x86_64) and a real Unity WebGL build. CI runs the device-free tests and the real-browser WebGL tests on Windows, macOS and Linux with Node.js 22 and 24, and on Windows also the lease interop tests, the `.ps1` check (`scripts\check-scripts.ps1`) and the PowerShell WebGL smoke test. An emulator PASS is not a device certification.
 
 ## Development
 
