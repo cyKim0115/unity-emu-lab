@@ -351,6 +351,23 @@ describe("buildUnity with a fake Unity", () => {
     await first;
   });
 
+  test("the guard state is said before Unity starts: GUARD_NONE in a git project without a snapshot", async () => {
+    const p = project();
+    for (const [st, want, line] of [
+      [{ inGit: true, snapshot: false }, "none", /^GUARD_NONE /],
+      [{ inGit: true, snapshot: true }, "snapshot", null],
+      [{ inGit: false }, "not-git", /^GUARD_NOT_GIT /],
+    ] as const) {
+      const b = bench();
+      const o = b.opts({ projectPath: p, target: "Android", method: "A.B" }, {});
+      o.deps = { ...o.deps, guardState: async () => st };
+      const r = await buildUnity(o);
+      assert.equal(r.guard, want);
+      if (line) assert.ok(b.lines.some((l) => line.test(l)), b.lines.join("\n"));
+      else assert.ok(!b.lines.some((l) => /^GUARD_/.test(l)));
+    }
+  });
+
   test("timeout: Unity is stopped and BUILD_TIMEOUT names the guard Report", async () => {
     const b = bench();
     const p = project();

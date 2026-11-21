@@ -33,7 +33,10 @@ export type EmuErrorCode =
   | "BUILD_FAILED" // Unity failed, or exited 0 while its log reports a failed build
   | "BUILD_TIMEOUT" // Unity ran longer than the timeout and was stopped
   | "BUILD_NO_OUTPUT" // Unity exited 0 but this build wrote nothing at the output
-  | "TEMPLATE_EXISTS"; // Assets/EmuLab is already in the project
+  | "TEMPLATE_EXISTS" // Assets/EmuLab is already in the project
+  | "NO_GIT" // git is not on PATH (and the project may be in a git repository)
+  | "NOT_GIT" // the project is not in a git work tree, or git refused it (dubious ownership)
+  | "GUARD_REFUSED"; // project guard: a safety rule stopped snapshot/report/revert (or a change before the snapshot); nothing was changed
 
 export class EmuError extends Error {
   readonly code: EmuErrorCode;

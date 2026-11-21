@@ -126,6 +126,12 @@ describe("usage errors exit 2", () => {
       ["build", "proj", "--target", "webgl", "--method", "A.B", "--timeout-minutes", "soon"],
       ["template"],
       ["template", "a", "b"],
+      ["guard"],
+      ["guard", "snapshot"],
+      ["guard", "frob", "p"],
+      ["guard", "report", "p", "--replace"],
+      ["guard", "snapshot", "p", "--keep", "x"],
+      ["guard", "report", "p", "--target", "android"],
     ];
     for (const args of cases) {
       const r = await run(args);
@@ -153,7 +159,13 @@ describe("build and template", () => {
     assert.match(r.stderr, /^NO_PROJECT: Not a Unity project/);
     const t = await run(["template", dir]);
     assert.equal(t.code, 1, t.stdout + t.stderr);
-    assert.match(t.stderr, /^NO_PROJECT: /);
+    assert.match(t.stderr, /NO_PROJECT: /);
+  });
+
+  test("guard outside git: NOT_GIT, exit 1", async () => {
+    const r = await run(["guard", "snapshot", tempLabHome()]);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /^NOT_GIT: not a git work tree/);
   });
 });
 

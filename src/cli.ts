@@ -16,7 +16,8 @@ import type { Report } from "./types.ts";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
 import { runWebglSmoke } from "./webgl/smoke.ts";
 import { buildUnity, type WebglCompression } from "./build.ts";
-import { installTemplate } from "./template.ts";
+import { addTemplate } from "./template.ts";
+import { guardReport, guardRevert, guardSnapshot } from "./guard.ts";
 import { BUILD_TARGETS, type BuildTarget } from "./unity.ts";
 
 export interface CliIo {
@@ -92,7 +93,13 @@ Commands:
       --target <android|webgl|windows>  --method <Class.Method> | --build-profile <asset path>
       --out <path> (default <lab home>/builds/<folder>-<hash8>/...) --release --webgl-compression <brotli|gzip|disabled>
       --emu-arm64 --extra-arg=<arg> (repeatable) --timeout-minutes <n> (default 40)
-  template <project>         Copy the build entry (EmuProjectBuild) into a new Assets/EmuLab/Editor/ (after the person agrees)
+  template <project>         Copy the build entry (EmuProjectBuild) into a new Assets/EmuLab/Editor/ (after the person agrees;
+                             in a git project only after the guard snapshot)
+  guard snapshot <project>   Before the FIRST build: record what is already changed (prebuild.patch backs up tracked changes)
+      [--replace] [--state-dir <dir>]
+  guard report <project>     After the LAST build: list what the build changed or created (show it to the person)
+  guard revert <project>     ONLY after the person agreed: revert the reported changes, move created files to a backup folder
+      [--keep "a|b"] (repeatable; paths exactly as the report printed them) [--state-dir <dir>]
   serve                     Run the MCP server on stdio (also: no command with stdin not a terminal)
   help                       This text
   version                    Print the version (-v, --version)
@@ -170,6 +177,9 @@ const OPTIONS = {
   "emu-arm64": { type: "boolean" },
   "extra-arg": { type: "string", multiple: true },
   "timeout-minutes": { type: "string" },
+  replace: { type: "boolean" },
+  keep: { type: "string", multiple: true },
+  "state-dir": { type: "string" },
 } as const;
 
 type OptionName = keyof typeof OPTIONS;
@@ -238,6 +248,7 @@ const COMMAND_OPTIONS: Record<string, OptionName[]> = {
   ],
   build: ["target", "method", "build-profile", "out", "release", "webgl-compression", "emu-arm64", "extra-arg", "timeout-minutes"],
   template: [],
+  guard: ["replace", "keep", "state-dir"],
   serve: [],
   help: [],
   version: [],
@@ -256,6 +267,7 @@ const POSITIONALS: Record<string, [number, number]> = {
   webgl: [1, 1],
   build: [1, 1],
   template: [1, 1],
+  guard: [2, 2],
   serve: [0, 0],
   help: [0, 0],
   version: [0, 0],
@@ -371,9 +383,11 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
           ? "webgl <build-dir>"
           : command === "build" || command === "template"
             ? `${command} <project>`
-            : command === "clock"
-              ? "clock forward <minutes> | clock reset"
-              : command;
+            : command === "guard"
+              ? "guard snapshot|report|revert <project>"
+              : command === "clock"
+                ? "clock forward <minutes> | clock reset"
+                : command;
     io.err(`USAGE: ${what}: wrong number of arguments (${args.join(" ") || "none"}). Run emu-lab help.`);
     return 2;
   }
@@ -592,8 +606,20 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
         break;
       }
       case "template":
-        result = installTemplate({ projectPath: path.resolve(args[0]), report });
+        result = await addTemplate({ projectPath: path.resolve(args[0]), report, env });
         break;
+      case "guard": {
+        const mode = args[0];
+        const projectPath = path.resolve(args[1]);
+        const stateDir = values["state-dir"] ? path.resolve(values["state-dir"]) : undefined;
+        if (mode !== "snapshot" && values.replace) throw new UsageError("--replace is an option of guard snapshot.");
+        if (mode !== "revert" && values.keep) throw new UsageError("--keep is an option of guard revert.");
+        if (mode === "snapshot") result = await guardSnapshot({ projectPath, stateDir, env, report, replace: values.replace });
+        else if (mode === "report") result = await guardReport({ projectPath, stateDir, env, report });
+        else if (mode === "revert") result = await guardRevert({ projectPath, stateDir, env, report, keep: (values.keep ?? []).flatMap((k) => k.split("|")) });
+        else throw new UsageError(`guard snapshot|report|revert <project> (got '${mode}').`);
+        break;
+      }
       default:
         io.err(`USAGE: unknown command '${command}'.`);
         return 2;

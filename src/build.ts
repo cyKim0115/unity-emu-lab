@@ -19,6 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveLocations } from "./config.ts";
 import { EmuError } from "./errors.ts";
+import { guardState } from "./guard.ts";
 import {
   buildHolders,
   comparablePath,
@@ -43,6 +44,8 @@ export interface BuildDeps {
   watchdog?: boolean;
   /** Poll interval while Unity runs (default 1 s). */
   pollMs?: number;
+  /** Whether the project has a guard snapshot (tests); default: the real check in the default state folder. */
+  guardState?: (projectPath: string) => Promise<{ inGit: boolean; snapshot?: boolean; stateDir?: string }>;
 }
 
 export interface BuildOptions {
@@ -88,6 +91,8 @@ export interface BuildResult {
   warnings: string[];
   /** EMU_BUILD_NOTE lines of the build log. */
   notes: string[];
+  /** The project guard before this build: "snapshot" (taken), "none" (a git project without one) or "not-git". */
+  guard: "snapshot" | "none" | "not-git";
 }
 
 export const DEFAULT_TIMEOUT_MINUTES = 40;
@@ -369,6 +374,24 @@ export async function buildUnity(o: BuildOptions): Promise<BuildResult> {
   try {
     await assertProjectFree(projectPath, lock);
 
+    // AGENTS.md rule 5: the guard snapshot comes before the first build, so the report can tell the build's changes
+    // from the person's. Not enforced here (a rebuild keeps the first snapshot), only said.
+    let guard: BuildResult["guard"] = "none";
+    try {
+      const st = await (deps.guardState ?? ((p: string) => guardState({ projectPath: p, env })))(projectPath);
+      guard = !st.inGit ? "not-git" : st.snapshot ? "snapshot" : "none";
+    } catch {
+      guard = "none";
+    }
+    if (guard === "none") {
+      report(
+        `GUARD_NONE no guard snapshot for this project: the build's changes cannot be told from the person's afterwards. Unless this is a ` +
+          `rebuild after a snapshot in another state folder, stop and take one first (emu-lab guard snapshot "${projectPath}").`,
+      );
+    } else if (guard === "not-git") {
+      report("GUARD_NOT_GIT not a git work tree: the guard cannot list or revert this build's changes. The person backs up ProjectSettings and Packages first (AGENTS.md rule 5).");
+    }
+
     const parent = target === "WebGL" ? out : path.dirname(out);
     mkdirSync(parent, { recursive: true });
     const log = buildLogPath(out, target);
@@ -528,6 +551,7 @@ export async function buildUnity(o: BuildOptions): Promise<BuildResult> {
       unchanged,
       warnings,
       notes,
+      guard,
     };
   } finally {
     running.delete(key);

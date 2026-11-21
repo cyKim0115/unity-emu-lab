@@ -162,10 +162,13 @@ const HINTS: Record<string, Hints> = {
   emu_webgl_smoke: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   emu_build: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   emu_build_template: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  emu_guard_snapshot: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  emu_guard_report: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  emu_guard_revert: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
 };
 
 describe("tool list", () => {
-  test("all 12 tools, each with all four hints matching the spec", async () => {
+  test("all 15 tools, each with all four hints matching the spec", async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), Object.keys(HINTS).sort());
     for (const t of tools) {
@@ -195,6 +198,8 @@ describe("tool list", () => {
     assert.match(byName.get("emu_job")!, /emu_build/);
     assert.match(byName.get("emu_build")!, /PROJECT_OPEN/);
     assert.match(byName.get("emu_build_template")!, /agreed/);
+    assert.match(byName.get("emu_build")!, /emu_guard_snapshot/);
+    assert.match(byName.get("emu_guard_revert")!, /ONLY after the person/);
     assert.match(byName.get("emu_job")!, /JOB_UNKNOWN/);
   });
 
@@ -484,6 +489,15 @@ describe("emu_build and emu_build_template", () => {
     const res2 = await call("emu_build", { project_path: tempLabHome(), target: "WebGL", wait_sec: 30 });
     assert.equal(res2.isError, true);
     assert.match(res2.text, /BAD_OPTION: Pass a build method/);
+  });
+
+  test("emu_guard_snapshot outside git: NOT_GIT; emu_guard_revert refuses without a snapshot", async () => {
+    const d = tempLabHome();
+    const res = await call("emu_guard_snapshot", { project_path: d });
+    assert.equal(res.isError, true);
+    assert.match(res.text, /NOT_GIT: not a git work tree/);
+    const rev = await call("emu_guard_revert", { project_path: d, keep: ["Assets/A.cs"] });
+    assert.equal(rev.isError, true);
   });
 
   test("emu_build_template copies the build entry into Assets/EmuLab/Editor", async () => {

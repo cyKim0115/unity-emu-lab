@@ -8,6 +8,7 @@ import { constants, copyFileSync, existsSync, mkdirSync, readFileSync } from "no
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EmuError } from "./errors.ts";
+import { guardState } from "./guard.ts";
 import type { Report } from "./types.ts";
 import { compareUnityVersions, readProjectVersion } from "./unity.ts";
 
@@ -70,4 +71,24 @@ export function installTemplate(o: { projectPath: string; report: Report; source
       "the guard Report lists it (and the .meta files Unity adds) as created, and Revert moves it out after the person agrees.",
   );
   return { added: true, dir, files, methods: TEMPLATE_METHODS };
+}
+
+/**
+ * installTemplate behind the guard rule (AGENTS.md rule 5): in a git work tree the template goes in only after a guard
+ * snapshot, so the report lists it as created and the revert moves it out (GUARD_REFUSED otherwise). Outside git it goes
+ * in with a warning: the person backs up the project their own way.
+ */
+export async function addTemplate(o: { projectPath: string; report: Report; env?: NodeJS.ProcessEnv; stateDir?: string }): Promise<TemplateResult> {
+  const st = await guardState({ projectPath: o.projectPath, env: o.env, stateDir: o.stateDir });
+  if (st.inGit && !st.snapshot) {
+    throw new EmuError(
+      "GUARD_REFUSED",
+      `No guard snapshot for ${path.resolve(o.projectPath)} yet. Take it first (emu-lab guard snapshot <project> / emu_guard_snapshot): the template ` +
+        "must go in after the snapshot, so the report lists it as created and the revert moves it out. Nothing changed.",
+    );
+  }
+  if (!st.inGit) {
+    o.report("WARN not a git work tree: the guard cannot list or revert what the template and the build add. Make sure the person backed up the project first.");
+  }
+  return installTemplate(o);
 }

@@ -28,7 +28,8 @@ import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
 import { killLiveBrowsers } from "./webgl/browser.ts";
 import { runWebglSmoke } from "./webgl/smoke.ts";
 import { buildUnity, DEFAULT_TIMEOUT_MINUTES, stopLiveBuilds } from "./build.ts";
-import { installTemplate } from "./template.ts";
+import { addTemplate } from "./template.ts";
+import { guardReport, guardRevert, guardSnapshot } from "./guard.ts";
 
 export type AdbFactory = (loc: Locations, env: NodeJS.ProcessEnv) => Adb;
 
@@ -66,6 +67,7 @@ const INSTRUCTIONS = `Self-test Unity Android builds on a local Android emulator
 - Do not drive the device with mobile-mcp (or anything else using UiAutomation) while emu_smoke or emu_check_notification runs: they need UiAutomation for the notification shade and system dialogs.
 - Device audio stays off. emu_status and emu_screenshot change nothing and work without a lease.
 - emu_build builds the person's Unity project in batchmode (Android APK, WebGL folder, Windows exe) with its own build method or a Unity 6 build profile; it runs as a job. It refuses while the project is open in a Unity Editor. Never commit what the build changed in the project. A project without a build method gets the lab's build entry with emu_build_template, only after the person agrees.
+- Protect the person's project around builds: emu_guard_snapshot once before the first build, emu_guard_report after the last one (show the list to the person), emu_guard_revert only after the person said yes to that list. Never use git checkout/reset/clean/stash on their project yourself.
 - emu_webgl_smoke tests a Unity WebGL build folder in a local headless or windowed Chrome/Edge/Chromium (throwaway profile, audio muted). It needs no emulator and no lease, and also runs as a job (emu_job). For a build that is not the bundled sample set ready_mode (loaded for Unity's Default template) or ready_marker, and no_tap or tap_marker.`;
 
 // ---------------------------------------------------------------------------------------------------
@@ -599,7 +601,7 @@ export function createServer(o: ServerOptions = {}): McpServer {
     {
       title: "Build a Unity player",
       description:
-        "Build the person's Unity project in batchmode on this PC (Windows, macOS or Linux): an Android APK, a WebGL folder or a Windows exe, with the project's own build method (method, gets -buildOut <out>) or a Unity 6 build profile (build_profile). If the project has neither, ask the person first and add the template with emu_build_template (method EmuProjectBuild.BuildApk / BuildWebGL / BuildWindows). The build switches the project's active platform (stored in Library, not in git) and can change ProjectSettings or assets: never commit those changes. It refuses while the project is open in a Unity Editor (PROJECT_OPEN: ask the person to close it) or another batchmode Unity builds it (BUILD_RUNNING). BUILD_OK means this build wrote the output; report every EMU_BUILD_WARN / EMU_BUILD_NOTE line of the result. Runs as a job (can take 3-40 minutes): if the result is a job_id, call emu_job with it and do not start another build of the same project meanwhile. Then test the output with emu_smoke (apk) or emu_webgl_smoke (folder).",
+        "Build the person's Unity project in batchmode on this PC (Windows, macOS or Linux): an Android APK, a WebGL folder or a Windows exe, with the project's own build method (method, gets -buildOut <out>) or a Unity 6 build profile (build_profile). Before the first build take emu_guard_snapshot, and after the last build call emu_guard_report and show the list to the person (revert only with their yes). If the project has neither a method nor a profile, ask the person first and add the template with emu_build_template after the snapshot (method EmuProjectBuild.BuildApk / BuildWebGL / BuildWindows). The build switches the project's active platform (stored in Library, not in git) and can change ProjectSettings or assets: never commit those changes. It refuses while the project is open in a Unity Editor (PROJECT_OPEN: ask the person to close it) or another batchmode Unity builds it (BUILD_RUNNING). BUILD_OK means this build wrote the output; report every EMU_BUILD_WARN / EMU_BUILD_NOTE line of the result. Runs as a job (can take 3-40 minutes): if the result is a job_id, call emu_job with it and do not start another build of the same project meanwhile. Then test the output with emu_smoke (apk) or emu_webgl_smoke (folder).",
       inputSchema: {
         project_path: z.string().min(1).describe("The Unity project folder (holds Assets/ and ProjectSettings/)."),
         target: z.enum(["Android", "WebGL", "Windows"]).describe("What to build."),
@@ -646,13 +648,64 @@ export function createServer(o: ServerOptions = {}): McpServer {
     {
       title: "Add the build entry to a project",
       description:
-        "Only after the person agreed: copy the lab's batchmode build entry (EmuProjectBuild.cs + EmuLab.Editor.asmdef, Unity 2021.2+) into a NEW folder Assets/EmuLab/Editor/ of a project that has no build method or build profile. Then build with emu_build method EmuProjectBuild.BuildApk, EmuProjectBuild.BuildWebGL or EmuProjectBuild.BuildWindows: it builds the scenes enabled in Build Settings with the current settings and restores the few settings it changes for the test build. Never commit Assets/EmuLab. Refuses (TEMPLATE_EXISTS) when Assets/EmuLab already holds something else.",
+        "Only after the person agreed, and in a git project only after emu_guard_snapshot (GUARD_REFUSED otherwise): copy the lab's batchmode build entry (EmuProjectBuild.cs + EmuLab.Editor.asmdef, Unity 2021.2+) into a NEW folder Assets/EmuLab/Editor/ of a project that has no build method or build profile. Then build with emu_build method EmuProjectBuild.BuildApk, EmuProjectBuild.BuildWebGL or EmuProjectBuild.BuildWindows: it builds the scenes enabled in Build Settings with the current settings and restores the few settings it changes for the test build. Never commit Assets/EmuLab. Refuses (TEMPLATE_EXISTS) when Assets/EmuLab already holds something else.",
       inputSchema: {
         project_path: z.string().min(1).describe("The Unity project folder."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async (a) => guard(async (report) => installTemplate({ projectPath: a.project_path, report })),
+    async (a) => guard(async (report) => addTemplate({ projectPath: a.project_path, report, env: env() })),
+  );
+
+  const projectPathSchema = z.string().min(1).describe("The Unity project folder.");
+  const stateDirSchema = z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Guard state folder (default <lab home>/guard/<project folder>-<hash>). Only to share one with scripts/project-guard.ps1.");
+
+  server.registerTool(
+    "emu_guard_snapshot",
+    {
+      title: "Guard: snapshot before the build",
+      description:
+        "Take ONCE, BEFORE the first build of the person's project (and before emu_build_template): records what is already changed in git (prebuild.patch backs up tracked changes; untracked files are only listed). Changes nothing in the project. Keep this snapshot for every rebuild (marker, emu_arm64, second target) and call emu_guard_report after the last build. If it lists changed files, ask the person whether to commit/stash them first or build as is. A second snapshot refuses (GUARD_REFUSED) while paths changed since the first one, possibly an earlier build's changes that were never reverted: replace=true only when the person says those are their own changes. Refuses while a batchmode Unity builds the project. NOT_GIT / NO_GIT: no git baseline; ask the person before building and have them back up ProjectSettings and Packages.",
+      inputSchema: {
+        project_path: projectPathSchema,
+        replace: z.boolean().optional().describe("Archive an existing snapshot even though paths changed since it (only when the person says those are their own changes)."),
+        state_dir: stateDirSchema,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (a) => guard((report) => guardSnapshot({ projectPath: a.project_path, replace: a.replace, stateDir: a.state_dir, env: env(), report })),
+  );
+
+  server.registerTool(
+    "emu_guard_report",
+    {
+      title: "Guard: report after the build",
+      description:
+        "After the LAST build: list the files the build changed (changed), created (created), staged changes made meanwhile (never reverted) and files that were already changed before the build and changed again (touched, never reverted). Changes nothing in the project. Show the whole list to the person and ask which files they edited themselves during the build and whether to revert the rest. Refuses while the project is open in a Unity Editor (PROJECT_OPEN: ask the person to close it; the Editor would write the build's settings back).",
+      inputSchema: { project_path: projectPathSchema, state_dir: stateDirSchema },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (a) => guard((report) => guardReport({ projectPath: a.project_path, stateDir: a.state_dir, env: env(), report })),
+  );
+
+  server.registerTool(
+    "emu_guard_revert",
+    {
+      title: "Guard: revert the build's changes",
+      description:
+        "ONLY after the person saw the emu_guard_report list and said yes: revert the reported changed files (backed up as a patch first, only when the patch covers exactly them) and move the reported created files into a backup folder (never deleted). keep = paths the person edited themselves, exactly as the report printed them. Never touches staged or touched files. Refuses and changes nothing (GUARD_REFUSED) when anything changed after the report, a commit was made since the snapshot, or a keep path is not in the report: then run emu_guard_report again and show the new list. Report the reverted / moved / kept paths and the backup folder from the result. Afterwards the snapshot is archived; the next build needs a new emu_guard_snapshot.",
+      inputSchema: {
+        project_path: projectPathSchema,
+        keep: z.array(z.string().min(1)).optional().describe("Paths to leave as they are (the person edited them), exactly as the report printed them."),
+        state_dir: stateDirSchema,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async (a) => guard((report) => guardRevert({ projectPath: a.project_path, keep: a.keep, stateDir: a.state_dir, env: env(), report })),
   );
 
   server.registerTool(
