@@ -21,8 +21,14 @@ using UnityEngine;
 // Build App Bundle, Export Project and Split APKs by target architecture.
 //   -executeMethod EmuProjectBuild.BuildApk   -buildOut <file.apk>  [-release] [-emuArm64]
 //   -executeMethod EmuProjectBuild.BuildWebGL -buildOut <folder>    [-release]
+//   -executeMethod EmuProjectBuild.BuildWindows -buildOut <file.exe> [-release]   (StandaloneWindows64)
 // -emuArm64 (Android, opt-in): for this build only use IL2CPP + ARM64, which the x86_64 emulator can run
 // (Mono builds are ARMv7 only).
+// Windows: for this build only it turns on Disable Unity Audio (Project Settings > Audio; the player runs on the
+// person's desktop and has no mute switch of its own), Run In Background (the player keeps running while its window
+// has no focus) and Use Player Log (the smoke test reads Player.log). An EMU_BUILD_NOTE line says so: report it as a
+// muted test build, a different binary from a release build. The project's Windows scripting backend is kept: an
+// IL2CPP project needs the Windows Build Support (IL2CPP) module and Visual Studio with C++ (doctor.ps1 -Target Windows).
 // Custom keystore (Android): Unity does not save keystore passwords to disk, so a fresh batchmode Unity cannot sign
 // with the release keystore. When the passwords are not set, this test APK is signed with the debug keystore and an
 // EMU_BUILD_WARN line says so. Never put keystore passwords on the command line for this.
@@ -34,11 +40,15 @@ public static class EmuProjectBuild
 {
     public static void BuildApk() { Build(BuildTarget.Android, BuildTargetGroup.Android); }
     public static void BuildWebGL() { Build(BuildTarget.WebGL, BuildTargetGroup.WebGL); }
+    public static void BuildWindows() { Build(BuildTarget.StandaloneWindows64, BuildTargetGroup.Standalone); }
+
+    const string AudioManagerPath = "ProjectSettings/AudioManager.asset";
 
     static void Build(BuildTarget target, BuildTargetGroup group)
     {
         bool ok = false;
         bool android = target == BuildTarget.Android;
+        bool windows = target == BuildTarget.StandaloneWindows64;
         bool arm64 = android && HasArg("-emuArm64");
         // EditorUserBuildSettings are stored in Library/. PlayerSettings are in ProjectSettings.asset, which
         // BuildPlayer saves to disk, so those are restored and saved again below.
@@ -48,7 +58,9 @@ public static class EmuProjectBuild
         bool savedCustomKeystore = PlayerSettings.Android.useCustomKeystore;
         var savedBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.Android);
         var savedArch = PlayerSettings.Android.targetArchitectures;
-        bool changedSplit = false, changedKeystore = false;
+        bool savedRunInBackground = PlayerSettings.runInBackground;
+        bool savedPlayerLog = PlayerSettings.usePlayerLog;
+        bool changedSplit = false, changedKeystore = false, changedAudio = false, changedRun = false, changedLog = false;
         try
         {
             string outPath = GetArg("-buildOut");
@@ -59,7 +71,9 @@ public static class EmuProjectBuild
             string full = Path.GetFullPath(outPath);
             if (android && !full.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("-buildOut must be an .apk file for Android: " + full);
-            Directory.CreateDirectory(android ? Path.GetDirectoryName(full) : full);
+            if (windows && !full.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("-buildOut must be an .exe file for Windows: " + full);
+            Directory.CreateDirectory(android || windows ? Path.GetDirectoryName(full) : full);
             if (android)
             {
                 // The smoke test installs one universal .apk from -buildOut.
@@ -88,6 +102,38 @@ public static class EmuProjectBuild
             {
                 PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
                 PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            }
+            if (windows)
+            {
+                // The player runs on the person's own desktop: keep it silent (AGENTS.md rule 4).
+                bool? audioOff = GetDisableAudio();
+                if (audioOff == true)
+                {
+                    Debug.Log("EMU_BUILD_NOTE audio-off: the project already has Disable Unity Audio on.");
+                }
+                else if (audioOff == false)
+                {
+                    SetDisableAudio(true);
+                    changedAudio = true;
+                    Debug.Log("EMU_BUILD_NOTE audio-off: Disable Unity Audio is on for this test build only (restored afterwards), " +
+                        "so this player is a muted test build, a different binary from a release build.");
+                }
+                else
+                {
+                    Debug.LogWarning("EMU_BUILD_WARN could not read Disable Unity Audio in " + AudioManagerPath + "; this build may play sound.");
+                }
+                if (!savedRunInBackground)
+                {
+                    PlayerSettings.runInBackground = true;
+                    changedRun = true;
+                    Debug.Log("EMU_BUILD_NOTE Run In Background is on for this test build only, so the player keeps running while its window has no focus.");
+                }
+                if (!savedPlayerLog)
+                {
+                    PlayerSettings.usePlayerLog = true;
+                    changedLog = true;
+                    Debug.Log("EMU_BUILD_NOTE Use Player Log is on for this test build only (the smoke test reads Player.log).");
+                }
             }
             WarnAddressables(target);
 
@@ -122,8 +168,14 @@ public static class EmuProjectBuild
                 Restore("scripting backend", () => PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, savedBackend));
                 Restore("target architectures", () => PlayerSettings.Android.targetArchitectures = savedArch);
             }
-            if (arm64 || changedSplit || changedKeystore)
-                Restore("ProjectSettings.asset", () => AssetDatabase.SaveAssets()); // write the restored values back to disk
+            if (changedAudio)
+                Restore("Disable Unity Audio", () => SetDisableAudio(false));
+            if (changedRun)
+                Restore("Run In Background", () => PlayerSettings.runInBackground = savedRunInBackground);
+            if (changedLog)
+                Restore("Use Player Log", () => PlayerSettings.usePlayerLog = savedPlayerLog);
+            if (arm64 || changedSplit || changedKeystore || changedAudio || changedRun || changedLog)
+                Restore("ProjectSettings", () => AssetDatabase.SaveAssets()); // write the restored values back to disk
         }
         if (!ok) EditorApplication.Exit(1);
     }
@@ -135,6 +187,37 @@ public static class EmuProjectBuild
         {
             Debug.LogError("EMU_BUILD_WARN could not restore " + what + " (" + e.Message + "); run project-guard Report and tell the user.");
         }
+    }
+
+    // Project Settings > Audio > Disable Unity Audio has no PlayerSettings API: it is m_DisableAudio of the
+    // AudioManager settings object. null when it cannot be read.
+    static SerializedObject LoadAudioManager()
+    {
+        var objects = AssetDatabase.LoadAllAssetsAtPath(AudioManagerPath);
+        return objects != null && objects.Length > 0 && objects[0] != null ? new SerializedObject(objects[0]) : null;
+    }
+
+    static bool? GetDisableAudio()
+    {
+        try
+        {
+            var property = LoadAudioManager()?.FindProperty("m_DisableAudio");
+            return property == null ? (bool?)null : property.boolValue;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("EMU_BUILD_WARN reading Disable Unity Audio failed: " + e.Message);
+            return null;
+        }
+    }
+
+    static void SetDisableAudio(bool value)
+    {
+        var settings = LoadAudioManager();
+        var property = settings?.FindProperty("m_DisableAudio");
+        if (property == null) throw new InvalidOperationException("m_DisableAudio not found in " + AudioManagerPath);
+        property.boolValue = value;
+        settings.ApplyModifiedPropertiesWithoutUndo();
     }
 
     // Unity keeps the keystore and key alias passwords in memory only, so a batchmode Unity has none unless a

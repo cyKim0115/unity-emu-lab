@@ -1,12 +1,17 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Diagnostics;
 #if UNITY_ANDROID
 using Unity.Notifications.Android;
 #endif
 
-// Smoke-test app for the emulator pipeline.
-// Every check the outside harness relies on is a "SMOKE_*" line in logcat (tag Unity).
+// Smoke-test app for the emulator, browser and Windows pipelines.
+// Every check the outside harness relies on is a "SMOKE_*" line in the Unity log: logcat (tag Unity) on Android,
+// the browser console on WebGL, Player.log (-logFile) on Windows.
+// Windows player only: "-emuSmokeFault crash|exception|quit" makes the app fail on purpose one second after
+// SMOKE_APP_READY (native crash, unhandled C# exception, Application.Quit(3)), so the smoke test's FAIL checks can be
+// tried; SMOKE_AUDIO logs whether Unity audio runs (dsp_time stays 0 when it is disabled).
 public class EmuSmoke : MonoBehaviour
 {
     const string ChannelId = "emu_smoke";
@@ -38,8 +43,43 @@ public class EmuSmoke : MonoBehaviour
 #endif
         status = "ready";
         Debug.Log("SMOKE_APP_READY");
+#if UNITY_STANDALONE && !UNITY_EDITOR
+        StartCoroutine(LogAudio());
+        string fault = ReadArg("-emuSmokeFault");
+        if (!string.IsNullOrEmpty(fault)) StartCoroutine(Fault(fault));
+#endif
         yield break;
     }
+
+#if UNITY_STANDALONE && !UNITY_EDITOR
+    static IEnumerator LogAudio()
+    {
+        yield return new WaitForSecondsRealtime(1f);
+        // dspTime only: AudioSettings.outputSampleRate logs an error when audio is disabled.
+        Debug.Log($"SMOKE_AUDIO dsp_time={AudioSettings.dspTime:F3}");
+    }
+
+    IEnumerator Fault(string kind)
+    {
+        yield return new WaitForSecondsRealtime(1f);
+        Debug.Log($"SMOKE_FAULT {kind}");
+        switch (kind)
+        {
+            case "crash": Utils.ForceCrash(ForcedCrashCategory.AccessViolation); break;
+            case "exception": throw new InvalidOperationException("SMOKE_FAULT unhandled exception on purpose");
+            case "quit": Application.Quit(3); break;
+            default: Debug.LogWarning($"SMOKE_FAULT unknown kind '{kind}' (crash, exception, quit)"); break;
+        }
+    }
+
+    static string ReadArg(string name)
+    {
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i] == name) return args[i + 1];
+        return null;
+    }
+#endif
 
     void OnApplicationFocus(bool focus)
     {

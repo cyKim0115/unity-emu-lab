@@ -10,8 +10,13 @@ using UnityEngine;
 //   Unity.exe -batchmode -quit -projectPath <p> -buildTarget android -executeMethod EmuBuild.BuildApk -buildOut <file.apk>
 //   Unity.exe -batchmode -quit -projectPath <p> -buildTarget webgl -executeMethod EmuBuild.BuildWebGL -buildOut <folder>
 //             [-webglCompression brotli|gzip|disabled]
+//   Unity.exe -batchmode -quit -projectPath <p> -buildTarget win64 -executeMethod EmuBuild.BuildWindows -buildOut <file.exe>
+//             [-emuKeepAudio]
 // Add -release for a non-development build (WebGL compresses only non-development builds).
 // -webglCompression applies to that one build: the project setting is put back afterwards.
+// BuildWindows turns on Disable Unity Audio, Run In Background and a windowed default for that one build and puts the
+// project settings back afterwards. -emuKeepAudio leaves audio on (the sample plays no sound; it exists to compare the
+// SMOKE_AUDIO line of a build with audio against a muted one).
 public static class EmuBuild
 {
     const string ScenePath = "Assets/Scenes/Main.unity";
@@ -47,6 +52,56 @@ public static class EmuBuild
         });
     }
 
+    public static void BuildWindows()
+    {
+        bool savedRun = PlayerSettings.runInBackground;
+        var savedMode = PlayerSettings.fullScreenMode;
+        bool keepAudio = HasArg("-emuKeepAudio");
+        bool changedAudio = false;
+        Build(BuildTarget.StandaloneWindows64, BuildTargetGroup.Standalone, GetArg("-buildOut") ?? "Builds/Windows/app.exe", () =>
+        {
+            PlayerSettings.runInBackground = true;
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            if (keepAudio)
+            {
+                Debug.Log("EMU_BUILD_NOTE -emuKeepAudio: Unity audio stays on in this sample build (it plays no sound).");
+            }
+            else if (GetDisableAudio())
+            {
+                Debug.Log("EMU_BUILD_NOTE audio-off: the project already has Disable Unity Audio on.");
+            }
+            else
+            {
+                SetDisableAudio(true);
+                changedAudio = true;
+                Debug.Log("EMU_BUILD_NOTE audio-off: Disable Unity Audio is on for this test build only (restored afterwards), " +
+                    "so this player is a muted test build, a different binary from a release build.");
+            }
+        }, () =>
+        {
+            bool dirty = changedAudio || PlayerSettings.runInBackground != savedRun || PlayerSettings.fullScreenMode != savedMode;
+            if (changedAudio) SetDisableAudio(false);
+            PlayerSettings.runInBackground = savedRun;
+            PlayerSettings.fullScreenMode = savedMode;
+            if (dirty) AssetDatabase.SaveAssets();
+        });
+    }
+
+    // Disable Unity Audio (Project Settings > Audio) is m_DisableAudio of the AudioManager settings object.
+    static SerializedObject LoadAudioManager()
+    {
+        return new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/AudioManager.asset")[0]);
+    }
+
+    static bool GetDisableAudio() => LoadAudioManager().FindProperty("m_DisableAudio").boolValue;
+
+    static void SetDisableAudio(bool value)
+    {
+        var settings = LoadAudioManager();
+        settings.FindProperty("m_DisableAudio").boolValue = value;
+        settings.ApplyModifiedPropertiesWithoutUndo();
+    }
+
     // restoreSettings runs after the build, also when it fails or throws, and before EditorApplication.Exit
     // (Exit does not return, so a finally around the Build call would not run on failure).
     static void Build(BuildTarget target, BuildTargetGroup group, string outPath, Action platformSettings, Action restoreSettings = null)
@@ -64,7 +119,7 @@ public static class EmuBuild
                 platformSettings();
 
                 string full = Path.GetFullPath(outPath);
-                Directory.CreateDirectory(target == BuildTarget.WebGL ? full : Path.GetDirectoryName(full));
+                Directory.CreateDirectory(target == BuildTarget.WebGL ? full : Path.GetDirectoryName(full));   // .apk / .exe: its folder
                 var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
                 {
                     scenes = new[] { ScenePath },
