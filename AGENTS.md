@@ -1,7 +1,7 @@
 # AGENTS.md — unity-emu-lab
 
 이 저장소를 받은 AI의 일: 사용자 PC에 「Unity 빌드 → 실행 → 자체 테스트」 환경을 갖추고, 사용자의 Unity 프로젝트에 붙여 실제로 돌린 뒤 결과를 보고한다.
-대상은 Android(에뮬레이터, 앱 밖 알림창까지), WebGL(로컬 서버 + 브라우저), Windows Standalone(이 PC 바탕화면에서 exe 실행)이다. Windows 10/11(x64) + Windows PowerShell 5.1 기준이다.
+대상은 Android(에뮬레이터, 앱 밖 알림창까지), WebGL(로컬 서버 + 브라우저), Windows Standalone(이 PC 바탕화면에서 exe 실행)이다. Windows 10/11(x64) + Windows PowerShell 5.1 기준이다. macOS·Linux 호스트는 npm 패키지(`emu-lab`)로 같은 절차를 한다(아래 「npm 패키지」).
 
 **받을 위치**: 사용자 Unity 프로젝트 폴더와 그 git 저장소 **밖**에 클론한다(예: `git clone <url> %USERPROFILE%\unity-emu-lab`). 프로젝트나 `Assets\` 안에 받지 않는다. 그 안에 받으면 이 저장소 파일이 사용자 변경으로 잡히고 빌드 출력이 프로젝트에 쌓인다. 모든 명령은 그 클론에서 실행한다. `doctor.ps1 -ProjectPath`가 `[FAIL] lab-location`으로 막는다.
 
@@ -144,7 +144,17 @@
 
 ## npm 패키지 `unity-emu-lab` (MCP 서버 + CLI)
 
-APK나 WebGL 빌드 폴더가 이미 있을 때는 PowerShell 대신 npm 패키지를 써도 된다(Windows·macOS·Linux, 빌드·project-guard는 없음). 쓰는 법은 README의 「npm 패키지」.
+macOS·Linux에서는 이 패키지로 위 절차를 한다(Windows에서도 된다). 위 규칙은 그대로 적용된다. 쓰는 법은 README의 「npm 패키지」.
+
+| PowerShell | npm CLI | MCP |
+|---|---|---|
+| `doctor.ps1 -ProjectPath <p> -Target <t>` | `emu-lab doctor --project <p> --target <t>` | `emu_doctor` |
+| `project-guard.ps1 -Mode Snapshot·Report·Revert` | `emu-lab guard snapshot·report·revert <p>`(`--replace`, `--keep "a\|b"`) | `emu_guard_snapshot`·`_report`·`_revert` |
+| `build-unity.ps1`, 템플릿 복사 | `emu-lab build <p> --target <t> --method·--build-profile`, `emu-lab template <p>` | `emu_build`, `emu_build_template` |
+
+- 규칙 5: 첫 빌드 전 `guard snapshot`, 마지막 빌드 뒤 `guard report` 목록을 보여 주고 「예」를 받은 뒤에만 `guard revert`. `template`은 git 프로젝트에서 스냅샷 뒤에만 들어간다. 빌드가 `GUARD_NONE`을 찍으면 멈추고 스냅샷부터 한다. 상태 폴더 기본값(`~/.emu-lab/guard/`)이 PowerShell(`artifacts\guard\`)과 달라, 한쪽이 시작한 주기는 `--state-dir`로 이어 간다.
+- 빌드 출력 기본값은 `~/.emu-lab/builds/<폴더>-<해시8>/`. `PROJECT_OPEN`·`BUILD_RUNNING`은 규칙 6대로 한다. SDK 설치 스크립트는 없다: `doctor`가 알려 주는 sdkmanager 명령을 규칙 1대로 동의 뒤에 돌리거나 사용자가 Android Studio로 깐다.
+- macOS·Linux 호스트: Windows 플레이어는 Mono 백엔드만 빌드되고 스모크는 Windows에서 PowerShell로 한다. Apple silicon은 arm64 이미지 AVD를 쓴다. Linux는 KVM(`/dev/kvm`, kvm 그룹)이 있어야 하고, GPU·디스플레이가 없으면 `start`가 `-gpu swiftshader_indirect`를 고른다.
 
 - MCP: `emu_start`로 임대를 잡고 → `emu_smoke`·`emu_check_notification`·`emu_clock` → 끝나면 반드시 `emu_release`(첫 실행으로 보려면 `uninstall: true`). 결과에 `job_id`가 오면 `emu_job`으로 이어 받고, 같은 도구를 다시 시작하지 않는다.
 - `BUSY`면 다른 세션이 쓰는 중이다. 기다리거나 사용자에게 주인·만료 시각을 전한다. 남의 임대를 풀지 않는다(`--any-owner`·`--stale`은 사람만 CLI로).

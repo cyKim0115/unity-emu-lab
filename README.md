@@ -12,10 +12,25 @@ Unity 빌드를 내 PC에서 실제로 띄워 **사람·AI 에이전트가 직�
 
 | 형태 | 하는 일 | 실행 환경 |
 |---|---|---|
-| npm 패키지 `unity-emu-lab` (MCP 서버 + `emu-lab` CLI) | Android: 에뮬레이터 임대, 기동·놓기, 스모크, 앱 밖 알림 확인, 기기 시계, 스크린샷. APK를 받는다. WebGL: 빌드 폴더를 받아 브라우저 스모크 | Node.js 22.18+, Windows·macOS·Linux |
-| PowerShell 스크립트 (`scripts/`) | 위 기능 + Windows 플레이어 스모크, Unity batchmode 빌드, 프로젝트 보호(`project-guard`), SDK 설치·점검 | Windows PowerShell 5.1 |
+| npm 패키지 `unity-emu-lab` (MCP 서버 + `emu-lab` CLI) | 호스트 점검, Unity batchmode 빌드, 프로젝트 보호(guard). Android: 에뮬레이터 임대, 기동·놓기, 스모크, 앱 밖 알림 확인, 기기 시계, 스크린샷. WebGL: 브라우저 스모크 | Node.js 22.18+, Windows·macOS·Linux |
+| PowerShell 스크립트 (`scripts/`) | 위 기능 + Windows 플레이어 스모크, Android SDK·AVD 설치 | Windows PowerShell 5.1 |
 
-둘은 같은 임대 파일(`~/.emu-lab/leases/<AVD>.json`)을 써서, 함께 돌아도 서로의 임대를 존중한다.
+둘은 같은 임대 파일(`~/.emu-lab/leases/<AVD>.json`)을 써서, 함께 돌아도 서로의 임대를 존중한다. 프로젝트 보호 상태 폴더도 같은 형식이다(기본 위치는 다르다. 아래 「빌드와 프로젝트 보호」).
+
+### 호스트별 지원
+
+| 기능 \ 호스트 | Windows | macOS | Linux |
+|---|---|---|---|
+| 점검 (`emu-lab doctor`, `doctor.ps1`) | npm·PS | npm | npm |
+| Unity batchmode 빌드: Android APK·WebGL | npm·PS | npm | npm |
+| Unity batchmode 빌드: Windows exe | npm·PS | npm (Mono 백엔드만) | npm (Mono 백엔드만) |
+| 프로젝트 보호 (Snapshot·Report·Revert) | npm·PS | npm | npm |
+| Android 에뮬레이터 임대·스모크·알림·시계 | npm·PS (x86_64, WHPX/AEHD) | npm (Apple silicon은 arm64 이미지, Hypervisor.framework) | npm (x86_64 이미지, KVM. GPU·디스플레이가 없으면 SwiftShader) |
+| WebGL 스모크 | npm·PS | npm | npm |
+| Windows 플레이어 스모크 | PS | 없음 | 없음 |
+| Android SDK·AVD 설치 | PS (`setup-android-sdk.ps1`) | 사람이 Android Studio나 sdkmanager로(`doctor`가 명령을 알려 준다) | macOS와 같음 |
+
+Windows on ARM은 Android 에뮬레이터가 안 된다(WebGL만). macOS·Linux에서 확인한 범위는 아래 「검증 범위」를 본다.
 
 ## npm 패키지 (MCP 서버 + CLI)
 
@@ -35,6 +50,7 @@ mobile-mcp와 같이 써도 된다. 다만 둘 다 UiAutomation을 쓰므로 스
 - Android SDK의 `platform-tools`(adb)·`emulator`와 AVD 하나(기본 이름 `unity-test`). Windows는 `scripts\setup-android-sdk.ps1`로 만든다(아래 [처음 한 번](#처음-한-번)). 다른 AVD는 `--avd <이름>`(MCP는 `avd`)이나 `EMU_AVD`로 고른다.
 - Unity 6 Android 플레이어는 ARM 라이브러리만 있다. API 35 `google_apis` x86_64 이미지(ARM 변환 내장)나 Apple Silicon의 arm64 이미지에서 돈다. Mono·ARMv7 전용 빌드는 못 돈다(스모크가 설치 전에 `ABI_MISMATCH`로 알린다).
 - WebGL만 볼 때는 Android SDK가 필요 없다. Chrome, Edge 또는 Chromium 하나가 있으면 된다(기본 설치 위치와 PATH에서 찾고, `EMU_BROWSER`·`CHROME_PATH`·`--browser`로 지정할 수 있다).
+- 빌드까지 하려면 Unity Hub로 설치한 프로젝트 버전 에디터와 대상 모듈(Android Build Support의 OpenJDK·Android SDK & NDK Tools, WebGL Build Support, Windows Build Support), 그리고 git(프로젝트 보호). 무엇이 빠졌는지는 `emu-lab doctor --project <프로젝트> --target <대상>`이 알려 준다.
 
 ### 설치와 등록
 
@@ -78,6 +94,7 @@ startup_timeout_sec = 60
 ### 빠른 사용 (CLI)
 
 ```bash
+emu-lab doctor --target android                 # 이 PC 점검(아무것도 바꾸지 않음). 0 준비됨, 2 동의 뒤 할 일만 남음, 1 사람이 할 일
 emu-lab start                                   # 임대를 잡고 에뮬레이터를 띄운다(이미 떠 있으면 다시 쓴다)
 emu-lab smoke app.apk --ready-marker "<첫 화면 로그>" --no-tap-check --notif-delay 0
 emu-lab release --uninstall                     # 기기 정리, 이 임대가 설치한 앱 제거, 이 임대가 띄운 에뮬레이터 종료
@@ -89,6 +106,7 @@ emu-lab release --uninstall                     # 기기 정리, 이 임대가 �
 - 따로 확인: `emu-lab notification --package <id> --title "<제목 일부>" --tap`, `emu-lab clock forward <분>` → `emu-lab clock reset`, `emu-lab screenshot [파일]`.
 - 전체 옵션은 `emu-lab help`. 종료 코드는 0 성공, 1 실패·거부(`BUSY`, `NO_LEASE` 등), 2 사용법 오류.
 - CLI는 임대 없이 기기 명령을 돌리면 `LEASE_NONE` 경고만 내고 진행한다(사람이 직접 돌릴 때). `--strict`면 거부한다. MCP 도구는 늘 엄격하다.
+- 에뮬레이터 GPU: `start`는 `-gpu`를 호스트에 맞춰 고른다(`--gpu auto` 기본). Windows·macOS는 `host`, Linux는 디스플레이(`DISPLAY`·`WAYLAND_DISPLAY`)와 GPU(`/dev/dri/renderD*`)가 있을 때만 `host`이고 아니면 `swiftshader_indirect`(소프트웨어, 느리지만 GPU 없는 서버·CI에서도 뜬다). `--gpu host|swiftshader_indirect|guest`나 `EMU_GPU`로 바꾼다.
 
 ### WebGL 스모크 (CLI·MCP)
 
@@ -110,10 +128,29 @@ emu-lab webgl <빌드 폴더> --ready-marker "<콘솔에 찍히는 한 줄>" --t
   - `summary.json`에 `browser_version`, `webgl`(WebGL 버전과 렌더러), `cross_origin_isolated`, `gpu`가 남는다.
 - 결과는 `~/.emu-lab/runs/<시각>-webgl-<pid>/`(`summary.json`, `console.txt`, `server.log`, `browser.log`, PNG). 종료 코드 0 PASS, 1 FAIL.
 
+### 빌드와 프로젝트 보호 (CLI·MCP)
+
+```bash
+emu-lab doctor --project <프로젝트> --target android          # 에디터 버전·모듈, 열린 에디터, git, 보호 상태
+emu-lab guard snapshot <프로젝트>                              # 첫 빌드 전에 한 번: 이미 바뀐 파일 기록(추적 파일은 prebuild.patch로 백업)
+emu-lab build <프로젝트> --target android --method <Class.Method>   # 또는 --build-profile "Assets/Settings/Build Profiles/<이름>.asset"
+emu-lab smoke ~/.emu-lab/builds/<폴더>-<해시8>/Android/app.apk --ready-marker "<로그>"
+emu-lab guard report <프로젝트>                                # 마지막 빌드 뒤: 빌드가 바꾼(changed)·만든(created) 파일 목록 → 사람에게 보여 준다
+emu-lab guard revert <프로젝트> [--keep "a|b"]                  # 사람이 「예」라고 한 뒤에만
+```
+
+- 빌드(`build`, MCP `emu_build`)는 PowerShell `build-unity.ps1`과 같은 규칙이다. 프로젝트의 빌드 메서드(`-buildOut <출력>`, Android는 `-apkOut`도 받는다)나 Unity 6 빌드 프로필을 쓰고, 이번 빌드가 출력에 새로 쓴 경우에만 `BUILD_OK`다. 로그가 실패라고 하면 Unity가 0으로 끝나도 실패이고, `EMU_BUILD_WARN`·`EMU_BUILD_NOTE` 줄을 다시 찍는다. 에디터가 프로젝트를 열고 있으면 `PROJECT_OPEN`, 다른 batchmode 빌드가 돌면 `BUILD_RUNNING`으로 멈춘다. 출력 기본값은 프로젝트 밖 `~/.emu-lab/builds/<폴더>-<해시8>/`(Android `app.apk`, `WebGL`, Windows `app.exe`). `--emu-arm64`, `--release`, `--webgl-compression`, `--extra-arg=<값>`(여러 번), `--timeout-minutes`(기본 40).
+- Unity는 이 순서로 찾는다: `UNITY_EDITOR_ROOT` → Unity Hub 설치 위치(`secondaryInstallPath.json`) → 기본 위치(Windows `%ProgramFiles%\Unity\Hub\Editor`, macOS `/Applications/Unity/Hub/Editor`, Linux `~/Unity/Hub/Editor`) → Hub에서 「Locate」로 추가한 에디터. 프로젝트의 `ProjectVersion.txt`와 정확히 같은 버전만 쓴다.
+- 이 명령이 죽으면(도구 시간 제한, 터미널 닫힘) 감시 프로세스가 숨은 Unity를 끄고, MCP 서버가 닫힐 때도 돌던 빌드를 끈다. 멈춘 빌드는 메서드가 바꾼 설정을 되돌리지 못하니 `guard report`를 돌린다.
+- 빌드 메서드가 없는 프로젝트: 사람이 동의하면 `emu-lab template <프로젝트>`(MCP `emu_build_template`)가 `EmuProjectBuild.cs`·`EmuLab.Editor.asmdef`를 새 폴더 `Assets/EmuLab/Editor/`에 넣는다(npm 패키지에 들어 있다). git 프로젝트에서는 `guard snapshot` 뒤에만 넣고, 그래야 `report`가 `created`로 잡고 `revert`가 꺼낸다. 메서드는 `EmuProjectBuild.BuildApk`·`BuildWebGL`·`BuildWindows`. 커밋하지 않는다.
+- 프로젝트 보호(`guard`, MCP `emu_guard_snapshot`·`emu_guard_report`·`emu_guard_revert`)는 `project-guard.ps1`과 규칙 하나하나가 같다: `changed`는 백업 패치가 정확히 그 경로만 담고 거꾸로 적용될 때만 되돌리고, `created`는 지우지 않고 백업 폴더로 옮기며, 빌드 전부터 바뀌어 있던 파일(`touched`)과 스테이징된 파일은 절대 되돌리지 않는다. Report 뒤에 바뀐 파일·새 파일·커밋이 있으면 아무것도 안 하고 멈춘다. 상태 폴더 기본값은 `~/.emu-lab/guard/<폴더>-<해시8>/`이고 PowerShell(`<클론>\artifacts\guard\...`)과 다르다. 한쪽이 시작한 주기를 다른 쪽에서 이어 가려면 `--state-dir`(MCP `state_dir`, PS `-StateDir`)로 같은 폴더를 준다.
+- 빌드는 프로젝트의 활성 플랫폼을 바꾼다(Library에 저장, git에 안 보임). Windows 플레이어를 IL2CPP로 빌드하려면 Windows 호스트와 Visual Studio C++가 필요하다(macOS·Linux는 Mono만). Windows 플레이어 스모크는 PowerShell `smoke-windows.ps1`만 있다.
+
 ### MCP 도구
 
 | 도구 | 하는 일 |
 |---|---|
+| `emu_doctor` | 호스트 점검(에뮬레이터 가속, `-gpu`, Unity 에디터·모듈, 프로젝트, SDK·AVD, 디스크, 브라우저). 아무것도 바꾸지 않는다 |
 | `emu_status` | 임대(주인·만료·유효 여부), 에뮬레이터, 부팅 상태, adb·SDK 경로. 아무것도 바꾸지 않는다 |
 | `emu_start` | 임대를 잡고(같은 주인이면 연장, 만료된 임대는 넘겨받기) 에뮬레이터를 띄워 부팅을 기다린다. 애니메이션·전체화면 안내를 끄고, 앞당겨진 시계를 되돌린다 |
 | `emu_renew` | 내 임대 연장 |
@@ -124,11 +161,14 @@ emu-lab webgl <빌드 폴더> --ready-marker "<콘솔에 찍히는 한 줄>" --t
 | `emu_screenshot` | 지금 화면을 이미지로 돌려준다. 임대가 없어도 된다 |
 | `emu_job` | 오래 걸린 도구의 결과 받기 |
 | `emu_webgl_smoke` | WebGL 빌드 폴더를 브라우저로 스모크(위 「WebGL 스모크」). 에뮬레이터·임대가 필요 없다 |
+| `emu_build` | Unity batchmode 빌드(위 「빌드와 프로젝트 보호」) |
+| `emu_build_template` | 빌드 메서드가 없는 프로젝트에 빌드 진입점 넣기(사람이 동의한 뒤, git이면 스냅샷 뒤) |
+| `emu_guard_snapshot` · `emu_guard_report` · `emu_guard_revert` | 프로젝트 보호. `revert`는 사람이 Report 목록에 「예」라고 한 뒤에만 |
 
 - 기기를 바꾸는 도구는 이 세션의 유효한 임대가 있어야 돈다(`NO_LEASE`). 남의 임대면 `BUSY`: 기다리거나 사람에게 알린다. 남의 임대 풀기(`--any-owner`)·만료 임대 버리기(`--stale`)는 사람만 CLI로 한다.
-- `emu_start`·`emu_smoke`·`emu_check_notification`·`emu_release`·`emu_webgl_smoke`는 작업(job)으로 돈다. `wait_sec`(기본 50초)까지 기다렸다가 안 끝나면 `job_id`를 돌려주고, `emu_job`으로 이어 받는다. Codex처럼 도구 제한 시간이 짧은 클라이언트도 끊기지 않는다.
+- `emu_start`·`emu_smoke`·`emu_check_notification`·`emu_release`·`emu_webgl_smoke`·`emu_build`는 작업(job)으로 돈다. `wait_sec`(기본 50초)까지 기다렸다가 안 끝나면 `job_id`를 돌려주고, `emu_job`으로 이어 받는다. Codex처럼 도구 제한 시간이 짧은 클라이언트도 끊기지 않는다.
 - 한 서버에서 한 AVD에 기기를 바꾸는 작업은 하나씩만 돈다(`JOB_RUNNING`).
-- 서버가 닫히면(클라이언트 종료, Ctrl+C) 이 서버가 앞당긴 시계를 되돌리고, 돌던 WebGL 스모크의 브라우저를 끈다. 강제 종료로 남은 시계는 다음 `start`·`release`가 되돌린다.
+- 서버가 닫히면(클라이언트 종료, Ctrl+C) 이 서버가 앞당긴 시계를 되돌리고, 돌던 WebGL 스모크의 브라우저와 Unity 빌드를 끈다. 강제 종료로 남은 시계는 다음 `start`·`release`가 되돌린다.
 
 ### 임대
 
@@ -147,6 +187,8 @@ emu-lab webgl <빌드 폴더> --ready-marker "<콘솔에 찍히는 한 줄>" --t
 | `EMU_ADB` | adb 경로 |
 | `ANDROID_SDK_ROOT`, `ANDROID_AVD_HOME` | SDK·AVD 위치. macOS·Linux는 `ANDROID_HOME`도 읽는다 |
 | `EMU_BROWSER`, `CHROME_PATH` | WebGL 스모크에 쓸 브라우저 실행 파일(이 순서, 없으면 기본 설치 위치 → PATH) |
+| `EMU_GPU` | `start`의 `--gpu auto`가 고를 값(`host`, `swiftshader_indirect`, `guest`) |
+| `UNITY_EDITOR_ROOT` | Unity 에디터 버전 폴더들이 있는 폴더(또는 버전 폴더 하나). Hub 위치보다 먼저 본다 |
 
 `<EMU_LAB_HOME>/config.json`에 `sdkRoot`·`avdHome`·`adb`를 적어 둘 수도 있다(PowerShell의 `local.settings.json`과 같은 키). 순서는 환경 변수 → `config.json` → 기본 위치(Windows `%USERPROFILE%\Android\Sdk`, macOS `~/Library/Android/sdk`, Linux `~/Android/Sdk`)다.
 Windows는 `ANDROID_HOME`을 일부러 무시한다(Android Studio의 SDK를 건드리지 않으려고).
@@ -158,7 +200,11 @@ Windows는 `ANDROID_HOME`을 일부러 무시한다(Android Studio의 SDK를 건
 2026-11-20, Windows 10 + Node.js 24.18: 기기 없는 시험 281개(가짜 adb), PowerShell 5.1 스크립트와의 임대 상호 시험(양쪽 BUSY), Unity 6000.6.0f1 샘플 APK(IL2CPP ARM64)의 패키지·ABI 읽기.
 2026-11-21, 같은 PC: 시험 318개(1개는 샘플 APK를 읽는 시험이라 APK를 빌드하지 않은 그날은 건너뜀). 그중 WebGL 스모크 시험은 실제 Chrome 157(headless)로 가짜 빌드 폴더(Brotli·Gzip 빌드 파일, 경고창, 빠진 `/Build/` 파일, 잡히지 않은 오류, 검은 캔버스, C# 예외 로그)를 돌린다.
 
-**아직 확인하지 않은 것(0.1.0 기준)**
+2026-11-21, 같은 PC(0.2.0 작업): 시험 421개(3개 건너뜀: 샘플 APK, Windows의 심볼릭 링크, 대소문자를 가리는 파일 시스템). 가짜 Unity로 빌드 판정, 실제 git 저장소로 프로젝트 보호(한글·공백·대괄호 경로, 하위 폴더 프로젝트, 40개 넘는 일괄 되돌리기, 패치 실패, 볼륨 넘는 이동), PowerShell `project-guard.ps1`과 상태 폴더 양방향 상호 시험, 가짜 탐침으로 OS별 점검. 실제 Unity 6000.6.0f1로 샘플 Windows 빌드를 `emu-lab build`로 돌려 `BUILD_OK`와 `EMU_BUILD_NOTE audio-off`를 확인했고(WebGL 모듈이 없는 에디터에서는 `Error building player because build target was unsupported`를 이유로 실패를 알림), 이 PC에서 `emu-lab doctor`와 `doctor.ps1`의 판정이 같았다. 열린 에디터·임포트 워커를 잠금 감지가 실제 프로세스로 찾았다.
+
+**아직 확인하지 않은 것(0.2.0 기준)**
+
+- macOS·Linux: 빌드·프로젝트 보호·점검은 단위 시험과 세 OS CI까지만 확인했다. 실제 Mac·Linux에서 Unity batchmode 빌드, 에뮬레이터 가속 점검, 잠금 감지(`lsof`·`/proc`)는 아직 돌려 보지 않았다.
 
 - Android: npm 패키지의 Android 경로(`start`·`smoke`·`notification`·`clock`·`release`와 같은 일을 하는 MCP 도구)는 위의 가짜 adb 단위 시험과 Windows·macOS·Linux CI까지만 확인했다. 실제 에뮬레이터에서는 아직 돌려 보지 않았다.
 - WebGL: `emu-lab webgl`·`emu_webgl_smoke`는 실제 Chrome(headless)으로 가짜 빌드 폴더를 돌렸지만, 실제 Unity WebGL 빌드로는 아직 확인하지 않았다.
@@ -179,7 +225,7 @@ npm run typecheck
 
 `.ps1`을 고쳤으면 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-scripts.ps1`(ASCII·PowerShell 5.1 구문 검사)도 돌린다.
 
-npm 패키지에는 `bin/`과 컴파일된 `dist/`만 들어간다(`npm publish`가 `prepack`에서 빌드). 배포 절차: `CHANGELOG.md`에 버전·날짜 → `npm version <patch|minor|major>`(`server.json`의 버전도 같이 올린다) → `npm publish`(2FA) → `npm view unity-emu-lab version`으로 확인한 뒤 `git push --follow-tags` → MCP 레지스트리: `mcp-publisher login github` → `mcp-publisher publish`(이름 `io.github.cyKim0115/unity-emu-lab`은 `package.json`의 `mcpName`과 같아야 하고, 한 번 올린 버전은 다시 올리지 못한다).
+npm 패키지에는 `bin/`, 컴파일된 `dist/`, 빌드 템플릿 `templates/`만 들어간다(`npm publish`가 `prepack`에서 빌드). 배포 절차: `CHANGELOG.md`에 버전·날짜 → `npm version <patch|minor|major>`(`server.json`의 버전도 같이 올린다) → `npm publish`(2FA) → `npm view unity-emu-lab version`으로 확인한 뒤 `git push --follow-tags` → MCP 레지스트리: `mcp-publisher login github` → `mcp-publisher publish`(이름 `io.github.cyKim0115/unity-emu-lab`은 `package.json`의 `mcpName`과 같아야 하고, 한 번 올린 버전은 다시 올리지 못한다).
 
 ## PowerShell 스크립트 (Windows)
 

@@ -2,7 +2,7 @@
   "name": "unity-emu-lab",
   "version": "0.1.0",
   "mcpName": "io.github.cyKim0115/unity-emu-lab",
-  "description": "MCP server and CLI to self-test Unity Android builds on an emulator: a device lease shared by several AI sessions, Unity-aware smoke checks (ready marker, crash or self-exit, ABI check, system dialogs), and checks outside the app (notification shade, tap back in, device clock); plus a WebGL smoke test in a local Chrome, Edge or Chromium.",
+  "description": "MCP server and CLI to self-test Unity builds on Windows, macOS and Linux: Android on an emulator shared by several AI sessions through a lease (Unity-aware smoke checks, notification shade, device clock), WebGL in a local Chrome, Edge or Chromium, batchmode Unity builds with a project guard that reverts only what the build changed, and a host check.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -16,7 +16,9 @@
     "webgl",
     "chrome-devtools-protocol",
     "claude",
-    "codex"
+    "codex",
+    "unity-build",
+    "batchmode"
   ],
   "repository": {
     "type": "git",

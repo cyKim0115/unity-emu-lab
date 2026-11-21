@@ -2,6 +2,22 @@
 
 npm 패키지 `unity-emu-lab`의 버전별 변경 내용입니다. npm 패키지에 들어가지 않는 PowerShell 스크립트의 변경은 각 버전의 「PowerShell 스크립트(저장소 클론 전용)」 소절에 적습니다.
 
+## 0.2.0 — 날짜 미정 (초안)
+
+### npm 패키지
+
+- macOS·Linux 호스트에서도 빌드부터 테스트까지 하도록, PowerShell 스크립트에만 있던 빌드·프로젝트 보호·점검을 옮겼습니다. 판정·안전 규칙은 PowerShell 스크립트와 같습니다.
+- 빌드(`emu-lab build <프로젝트>`, MCP `emu_build`): Unity batchmode로 Android APK·WebGL 폴더·Windows exe를 만듭니다. 프로젝트의 빌드 메서드나 Unity 6 빌드 프로필을 쓰고, 이번 빌드가 출력에 새로 쓴 경우에만 `BUILD_OK`입니다. 로그가 실패라고 하면 종료 코드 0이어도 실패이고, `EMU_BUILD_WARN`·`EMU_BUILD_NOTE` 줄을 다시 알립니다. 에디터는 Windows·macOS·Linux의 Unity Hub 위치와 `UNITY_EDITOR_ROOT`에서 찾습니다. 프로젝트를 연 에디터(`PROJECT_OPEN`)나 돌고 있는 batchmode 빌드(`BUILD_RUNNING`)가 있으면 멈추고, 이 명령이 죽거나 MCP 서버가 닫히면 숨은 Unity를 끕니다. 작업(job)으로 돕니다.
+- 빌드 진입점 템플릿(`emu-lab template`, MCP `emu_build_template`): 빌드 메서드가 없는 프로젝트에 `EmuProjectBuild`를 새 폴더 `Assets/EmuLab/Editor/`로 넣습니다. git 프로젝트에서는 보호 스냅샷 뒤에만 넣습니다. 템플릿 파일이 패키지에 들어갑니다.
+- 프로젝트 보호(`emu-lab guard snapshot|report|revert`, MCP `emu_guard_snapshot`·`emu_guard_report`·`emu_guard_revert`): `project-guard.ps1`과 같은 규칙으로 빌드가 바꾼 파일만 보여 주고, 사람이 동의한 것만 되돌립니다(만든 파일은 지우지 않고 백업 폴더로 이동). 상태 파일 형식이 같아 `--state-dir`로 PowerShell 쪽과 이어 쓸 수 있습니다. git 출력은 끝까지 읽고, 승인된 경로는 대소문자까지 같아야 되돌립니다.
+- 점검(`emu-lab doctor`, MCP `emu_doctor`): 에뮬레이터 가속(Linux KVM, macOS Hypervisor.framework, Windows WHPX/AEHD), `-gpu` 선택, Unity 에디터·모듈, 사용자 프로젝트(버전, 모듈, 열린 에디터, git과 보호 스냅샷, Android ABI, Windows 백엔드), SDK·AVD(호스트 CPU에 맞는 이미지인지), 디스크, 브라우저를 봅니다. 종료 코드는 `doctor.ps1`과 같습니다(0 준비됨, 2 할 일만 남음, 1 사람이 할 일).
+- 에뮬레이터 GPU: `emu-lab start --gpu`, MCP `emu_start`의 `gpu`, 환경 변수 `EMU_GPU`. 기본 `auto`는 Windows·macOS에서 `host`, Linux에서는 디스플레이와 GPU가 있을 때만 `host`이고 아니면 `swiftshader_indirect`를 씁니다(전에는 늘 `host`라 GPU 없는 Linux에서 뜨지 않을 수 있었습니다).
+- MCP 도구가 10개에서 16개로 늘었습니다. 새 오류 코드: `NO_PROJECT`, `NO_UNITY`, `PROJECT_OPEN`, `BUILD_RUNNING`, `BUILD_FAILED`, `BUILD_TIMEOUT`, `BUILD_NO_OUTPUT`, `TEMPLATE_EXISTS`, `NO_GIT`, `NOT_GIT`, `GUARD_REFUSED`.
+
+### PowerShell 스크립트(저장소 클론 전용)
+
+- 바뀐 것 없음. CI가 Windows에서 npm 보호 기능과 `project-guard.ps1`의 상태 폴더 상호 시험을 돌립니다.
+
 ## 0.1.0 — 2026-11-21
 
 ### npm 패키지
