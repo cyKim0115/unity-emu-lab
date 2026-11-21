@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -72,7 +72,9 @@ describe("runProcess", () => {
       cwd: dir,
     });
     assert.equal(r.stdout.split("|")[0], "yes");
-    assert.equal(r.stdout.split("|")[1].toLowerCase(), dir.toLowerCase());
+    // macOS: the temp folder is under /var, a link to /private/var, and the child reports the real path.
+    const cwd = r.stdout.split("|")[1].toLowerCase();
+    assert.ok([dir, realpathSync(dir)].some((p) => p.toLowerCase() === cwd), `cwd ${cwd} is not ${dir}`);
   });
 });
 
