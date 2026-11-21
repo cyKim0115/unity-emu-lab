@@ -135,12 +135,14 @@
 
 ## npm 패키지 `unity-emu-lab` (MCP 서버 + CLI)
 
-APK가 이미 있고 Android만 볼 때는 PowerShell 대신 npm 패키지를 써도 된다(Windows·macOS·Linux). 쓰는 법은 README의 「npm 패키지」.
+APK나 WebGL 빌드 폴더가 이미 있을 때는 PowerShell 대신 npm 패키지를 써도 된다(Windows·macOS·Linux, 빌드·project-guard는 없음). 쓰는 법은 README의 「npm 패키지」.
 
 - MCP: `emu_start`로 임대를 잡고 → `emu_smoke`·`emu_check_notification`·`emu_clock` → 끝나면 반드시 `emu_release`(첫 실행으로 보려면 `uninstall: true`). 결과에 `job_id`가 오면 `emu_job`으로 이어 받고, 같은 도구를 다시 시작하지 않는다.
 - `BUSY`면 다른 세션이 쓰는 중이다. 기다리거나 사용자에게 주인·만료 시각을 전한다. 남의 임대를 풀지 않는다(`--any-owner`·`--stale`은 사람만 CLI로).
 - 임대 파일은 PowerShell 스크립트와 같다. 한 세션 안에서는 한쪽(npm 또는 PowerShell)만 쓴다. 주인이 같으면 서로의 임대를 자기 것으로 본다.
-- 이 저장소 클론에서 Node 코드를 고쳤으면 `npm test`(가짜 adb, 기기를 건드리지 않음)와 `npm run typecheck`를 돌린다. 기기 시험은 임대를 잡은 뒤에만 한다.
+- WebGL: `emu_webgl_smoke` / `emu-lab webgl <빌드 폴더>`. 임대·에뮬레이터가 필요 없다. 판정·옵션은 위 「WebGL 판정」과 같고(snake_case / kebab-case), 사용자 프로필이 아닌 임시 프로필·무음으로 띄운다. 소리를 켜거나 사용자 브라우저 프로필을 쓰지 않는다.
+- 이 저장소 클론에서 Node 코드를 고쳤으면 `npm test`(가짜 adb, 기기를 건드리지 않음. WebGL 시험은 설치된 브라우저를 headless·무음으로 띄움)와 `npm run typecheck`를 돌린다. 기기 시험은 임대를 잡은 뒤에만 한다.
+- `.ps1`을 고쳤으면 `scripts\check-scripts.ps1`(ASCII·PowerShell 5.1 구문 검사)을 돌린다. CI가 Windows에서 같은 검사를 한다.
 
 ## mobile-mcp (선택: AI가 에뮬레이터 화면을 보고 탭)
 

@@ -5,14 +5,14 @@
 Unity 빌드를 내 PC에서 실제로 띄워 **사람·AI 에이전트가 직접 자체 테스트**하는 도구.
 
 - **Android**: 에뮬레이터에 설치해 앱 안(로그 마커·탭 입력)과 앱 밖(시스템 대화상자·알림창·알림 탭 복귀)을 확인한다.
-- **WebGL**: 로컬 서버로 띄워 Chrome/Edge를 DevTools 프로토콜로 조종한다(PowerShell 스크립트만).
+- **WebGL**: 로컬 서버로 띄워 Chrome/Edge/Chromium을 DevTools 프로토콜로 조종한다.
 
 두 가지 형태로 쓴다.
 
 | 형태 | 하는 일 | 실행 환경 |
 |---|---|---|
-| npm 패키지 `unity-emu-lab` (MCP 서버 + `emu-lab` CLI) | Android: 에뮬레이터 임대, 기동·놓기, 스모크, 앱 밖 알림 확인, 기기 시계, 스크린샷. APK를 받는다 | Node.js 22.18+, Windows·macOS·Linux |
-| PowerShell 스크립트 (`scripts/`) | 위 기능 + Unity batchmode 빌드, 프로젝트 보호(`project-guard`), WebGL 스모크, SDK 설치·점검 | Windows PowerShell 5.1 |
+| npm 패키지 `unity-emu-lab` (MCP 서버 + `emu-lab` CLI) | Android: 에뮬레이터 임대, 기동·놓기, 스모크, 앱 밖 알림 확인, 기기 시계, 스크린샷. APK를 받는다. WebGL: 빌드 폴더를 받아 브라우저 스모크 | Node.js 22.18+, Windows·macOS·Linux |
+| PowerShell 스크립트 (`scripts/`) | 위 기능 + Unity batchmode 빌드, 프로젝트 보호(`project-guard`), SDK 설치·점검 | Windows PowerShell 5.1 |
 
 둘은 같은 임대 파일(`~/.emu-lab/leases/<AVD>.json`)을 써서, 함께 돌아도 서로의 임대를 존중한다.
 
@@ -33,6 +33,7 @@ mobile-mcp와 같이 써도 된다. 다만 둘 다 UiAutomation을 쓰므로 스
 - [Node.js](https://nodejs.org/) 22.18 이상
 - Android SDK의 `platform-tools`(adb)·`emulator`와 AVD 하나(기본 이름 `unity-test`). Windows는 `scripts\setup-android-sdk.ps1`로 만든다(아래 [처음 한 번](#처음-한-번)). 다른 AVD는 `--avd <이름>`(MCP는 `avd`)이나 `EMU_AVD`로 고른다.
 - Unity 6 Android 플레이어는 ARM 라이브러리만 있다. API 35 `google_apis` x86_64 이미지(ARM 변환 내장)나 Apple Silicon의 arm64 이미지에서 돈다. Mono·ARMv7 전용 빌드는 못 돈다(스모크가 설치 전에 `ABI_MISMATCH`로 알린다).
+- WebGL만 볼 때는 Android SDK가 필요 없다. Chrome, Edge 또는 Chromium 하나가 있으면 된다(기본 설치 위치와 PATH에서 찾고, `EMU_BROWSER`·`CHROME_PATH`·`--browser`로 지정할 수 있다).
 
 ### 설치와 등록
 
@@ -88,6 +89,25 @@ emu-lab release --uninstall                     # 기기 정리, 이 임대가 �
 - 전체 옵션은 `emu-lab help`. 종료 코드는 0 성공, 1 실패·거부(`BUSY`, `NO_LEASE` 등), 2 사용법 오류.
 - CLI는 임대 없이 기기 명령을 돌리면 `LEASE_NONE` 경고만 내고 진행한다(사람이 직접 돌릴 때). `--strict`면 거부한다. MCP 도구는 늘 엄격하다.
 
+### WebGL 스모크 (CLI·MCP)
+
+```bash
+emu-lab webgl <빌드 폴더> --ready-mode loaded --no-tap-check --headless   # Unity 기본 템플릿, 로그 마커 없음
+emu-lab webgl <빌드 폴더> --ready-marker "<콘솔에 찍히는 한 줄>" --tap-marker "<탭하면 찍히는 줄>"
+```
+
+- 에뮬레이터·임대가 필요 없다. 빌드 폴더를 `localhost`로 띄우고(127.0.0.1에만 열어 방화벽 창이 뜨지 않음) 브라우저를 임시 프로필·무음으로 연다. 끝나면 프로필을 지운다(`--keep-profile`이면 남김).
+- 판정과 옵션 이름은 PowerShell `smoke-webgl.ps1`과 같다(`summary.json` 키도 같음): 준비 `--ready-mode marker|loaded|expression`, 탭 `--tap-marker`/`--tap-expression`·`--tap-retry`, `--after-tap-expression`, `--fail-expression`, `--info-expression`, `--no-isolation`.
+- PowerShell 판보다 늘어난 것:
+  - `--tap-input touch`: 터치 에뮬레이션을 켜고 터치로 탭한다.
+  - `--fail-on-console-error`: 치명 오류가 아닌 콘솔 오류(예: C# 예외 로그)도 실패로 본다. 기본은 개수만 센다(`console_errors`, `managed_exceptions`).
+  - `--ignore-error <정규식>`: 맞는 콘솔 오류·예외를 무시한다(외부 분석 스크립트 오류 등). 무시한 개수는 `ignored_errors`.
+  - `canvas_blank`: 마지막 스크린샷에서 캔버스가 한 가지 색이면 참. `--fail-on-blank`일 때만 실패로 본다.
+  - `--gpu auto|host|swiftshader`: GPU 없는 호스트용 소프트웨어 WebGL. `auto`는 디스플레이 없는 Linux의 headless 실행에서만 SwiftShader를 쓴다.
+  - `--browser-arg=<스위치>`(여러 번): 브라우저 스위치 추가(예: 컨테이너의 `--browser-arg=--no-sandbox`. root면 자동으로 붙는다).
+  - `summary.json`에 `browser_version`, `webgl`(WebGL 버전과 렌더러), `cross_origin_isolated`, `gpu`가 남는다.
+- 결과는 `~/.emu-lab/runs/<시각>-webgl-<pid>/`(`summary.json`, `console.txt`, `server.log`, `browser.log`, PNG). 종료 코드 0 PASS, 1 FAIL.
+
 ### MCP 도구
 
 | 도구 | 하는 일 |
@@ -101,11 +121,12 @@ emu-lab release --uninstall                     # 기기 정리, 이 임대가 �
 | `emu_clock` | `forward`(분) / `reset` |
 | `emu_screenshot` | 지금 화면을 이미지로 돌려준다. 임대가 없어도 된다 |
 | `emu_job` | 오래 걸린 도구의 결과 받기 |
+| `emu_webgl_smoke` | WebGL 빌드 폴더를 브라우저로 스모크(위 「WebGL 스모크」). 에뮬레이터·임대가 필요 없다 |
 
 - 기기를 바꾸는 도구는 이 세션의 유효한 임대가 있어야 돈다(`NO_LEASE`). 남의 임대면 `BUSY`: 기다리거나 사람에게 알린다. 남의 임대 풀기(`--any-owner`)·만료 임대 버리기(`--stale`)는 사람만 CLI로 한다.
-- `emu_start`·`emu_smoke`·`emu_check_notification`·`emu_release`는 작업(job)으로 돈다. `wait_sec`(기본 50초)까지 기다렸다가 안 끝나면 `job_id`를 돌려주고, `emu_job`으로 이어 받는다. Codex처럼 도구 제한 시간이 짧은 클라이언트도 끊기지 않는다.
+- `emu_start`·`emu_smoke`·`emu_check_notification`·`emu_release`·`emu_webgl_smoke`는 작업(job)으로 돈다. `wait_sec`(기본 50초)까지 기다렸다가 안 끝나면 `job_id`를 돌려주고, `emu_job`으로 이어 받는다. Codex처럼 도구 제한 시간이 짧은 클라이언트도 끊기지 않는다.
 - 한 서버에서 한 AVD에 기기를 바꾸는 작업은 하나씩만 돈다(`JOB_RUNNING`).
-- 서버가 닫히면(클라이언트 종료, Ctrl+C) 이 서버가 앞당긴 시계를 되돌린다. 강제 종료로 남은 시계는 다음 `start`·`release`가 되돌린다.
+- 서버가 닫히면(클라이언트 종료, Ctrl+C) 이 서버가 앞당긴 시계를 되돌리고, 돌던 WebGL 스모크의 브라우저를 끈다. 강제 종료로 남은 시계는 다음 `start`·`release`가 되돌린다.
 
 ### 임대
 
@@ -123,6 +144,7 @@ emu-lab release --uninstall                     # 기기 정리, 이 임대가 �
 | `EMU_OWNER` | 임대 주인 |
 | `EMU_ADB` | adb 경로 |
 | `ANDROID_SDK_ROOT`, `ANDROID_AVD_HOME` | SDK·AVD 위치. macOS·Linux는 `ANDROID_HOME`도 읽는다 |
+| `EMU_BROWSER`, `CHROME_PATH` | WebGL 스모크에 쓸 브라우저 실행 파일(이 순서, 없으면 기본 설치 위치 → PATH) |
 
 `<EMU_LAB_HOME>/config.json`에 `sdkRoot`·`avdHome`·`adb`를 적어 둘 수도 있다(PowerShell의 `local.settings.json`과 같은 키). 순서는 환경 변수 → `config.json` → 기본 위치(Windows `%USERPROFILE%\Android\Sdk`, macOS `~/Library/Android/sdk`, Linux `~/Android/Sdk`)다.
 Windows는 `ANDROID_HOME`을 일부러 무시한다(Android Studio의 SDK를 건드리지 않으려고).
@@ -132,7 +154,9 @@ Windows는 `ANDROID_HOME`을 일부러 무시한다(Android Studio의 SDK를 건
 ### 검증 범위
 
 2026-11-20, Windows 10 + Node.js 24.18: 기기 없는 시험 281개(가짜 adb), PowerShell 5.1 스크립트와의 임대 상호 시험(양쪽 BUSY), Unity 6000.6.0f1 샘플 APK(IL2CPP ARM64)의 패키지·ABI 읽기.
-실제 에뮬레이터(Android 15, API 35 `google_apis` x86_64)로 하는 npm 패키지 확인은 아직이다(같은 환경에서 PowerShell 스크립트는 확인함). macOS·Linux는 기기 없는 시험(CI)만 돌린다. 에뮬레이터 PASS는 실기기 인증이 아니다.
+2026-11-21, 같은 PC: 시험 311개. 그중 WebGL 스모크 시험은 실제 Chrome 157(headless)로 가짜 빌드 폴더(Brotli·Gzip 빌드 파일, 경고창, 빠진 `/Build/` 파일, 잡히지 않은 오류, 검은 캔버스, C# 예외 로그)를 돌린다.
+실제 에뮬레이터(Android 15, API 35 `google_apis` x86_64)로 하는 npm 패키지 확인과 실제 Unity WebGL 빌드로 하는 `emu-lab webgl` 확인은 아직이다(같은 환경에서 PowerShell 스크립트는 둘 다 확인함).
+CI는 Windows·macOS·Linux × Node.js 22·24에서 기기 없는 시험과 실제 브라우저 WebGL 시험을 돌리고, Windows에서는 PowerShell과의 임대 상호 시험, `.ps1` 검사(`scripts\check-scripts.ps1`), PowerShell WebGL 스모크도 돌린다. 에뮬레이터 PASS는 실기기 인증이 아니다.
 
 ### 개발
 
@@ -141,9 +165,11 @@ git clone https://github.com/cyKim0115/unity-emu-lab.git
 cd unity-emu-lab
 npm install
 npm link        # emu-lab이 이 폴더의 TypeScript 소스를 빌드 없이 실행한다
-npm test        # 가짜 adb로 도는 시험(기기·에뮬레이터를 건드리지 않음)
+npm test        # 가짜 adb로 도는 시험(기기·에뮬레이터를 건드리지 않음). WebGL 시험은 설치된 브라우저를 headless·무음으로 띄운다
 npm run typecheck
 ```
+
+`.ps1`을 고쳤으면 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-scripts.ps1`(ASCII·PowerShell 5.1 구문 검사)도 돌린다.
 
 npm 패키지에는 `bin/`과 컴파일된 `dist/`만 들어간다(`npm publish`가 `prepack`에서 빌드). 배포 절차: `CHANGELOG.md`에 버전·날짜 → `npm version <patch|minor|major>` → `npm publish`(2FA) → `npm view unity-emu-lab version`으로 확인한 뒤 `git push --follow-tags`.
 
@@ -267,6 +293,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-all.ps1 -Target 
 - 호출자가 강제 종료돼도 감시 프로세스(`watch-parent.ps1`)가 서버·브라우저·logcat을 정리한다. 결과 폴더는 `artifacts\<시각>-<종류>-<PID>\`.
 - 샘플 빌드 옵션: `-Release`(개발 빌드 아님, WebGL은 이때만 압축), `-WebGLCompression brotli|gzip|disabled`(그 빌드에만 적용, ProjectSettings는 원래대로 되돌림).
 - 다른 프로젝트: `run-all.ps1 -Target WebGL -SkipBuild -BuildDir <빌드 폴더> -ReadyMode Loaded -NoTapCheck`.
+- 빌드가 이미 있으면 npm 패키지의 `emu-lab webgl <빌드 폴더>`로도 같은 판정을 한다(macOS·Linux 포함, 위 「WebGL 스모크 (CLI·MCP)」).
 - 탭이 먹을 때까지 다시 탭: `-TapExpression "<탭이 먹혔을 때 참>" -TapRetrySec 5 -TapTimeoutSec 60`, 그 뒤 기다릴 상태는 `-AfterTapExpression`·`-AfterTapTimeoutSec`. 마지막 대기 `-SettleSec`(기본 2초) 뒤 `03-final.png`.
 
 ##### 예: 상태를 노출하는 커스텀 템플릿
