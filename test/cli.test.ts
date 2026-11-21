@@ -132,6 +132,10 @@ describe("usage errors exit 2", () => {
       ["guard", "report", "p", "--replace"],
       ["guard", "snapshot", "p", "--keep", "x"],
       ["guard", "report", "p", "--target", "android"],
+      ["doctor", "--target", "ios"],
+      ["doctor", "extra"],
+      ["doctor", "--method", "A.B"],
+      ["start", "--gpu", "vulkan"],
     ];
     for (const args of cases) {
       const r = await run(args);

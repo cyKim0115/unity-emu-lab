@@ -165,10 +165,11 @@ const HINTS: Record<string, Hints> = {
   emu_guard_snapshot: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   emu_guard_report: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   emu_guard_revert: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  emu_doctor: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 
 describe("tool list", () => {
-  test("all 15 tools, each with all four hints matching the spec", async () => {
+  test("all 16 tools, each with all four hints matching the spec", async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), Object.keys(HINTS).sort());
     for (const t of tools) {

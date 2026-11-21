@@ -9,7 +9,7 @@
 //   still match; never by pid, only with `adb -s <serial> emu kill`.
 // - status changes nothing (no lease write, no device-changing adb call).
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Adb } from "./adb.ts";
@@ -75,6 +75,39 @@ export const DEFAULT_EMULATOR_TIMING: EmulatorTiming = {
   stopPollMs: 2_000,
 };
 
+/** The emulator's -gpu mode. "auto" picks one for this host (resolveEmulatorGpu). */
+export type EmulatorGpu = "auto" | "host" | "swiftshader_indirect" | "guest";
+export const EMULATOR_GPU_MODES: readonly EmulatorGpu[] = ["auto", "host", "swiftshader_indirect", "guest"];
+
+/** True when Linux has a GPU render node (/dev/dri/renderD*). */
+function linuxRenderNode(): boolean {
+  try {
+    return readdirSync("/dev/dri").some((n) => n.startsWith("renderD"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The -gpu value for a launch and why. "auto": EMU_GPU when it names a mode; Windows and macOS use the host GPU; Linux
+ * uses it only with a display (DISPLAY or WAYLAND_DISPLAY) and a GPU render node, else SwiftShader (software
+ * rendering, slower but it boots on a headless server or CI runner, where -gpu host fails).
+ */
+export function resolveEmulatorGpu(
+  mode: EmulatorGpu = "auto",
+  o: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; hasRenderNode?: () => boolean } = {},
+): { gpu: Exclude<EmulatorGpu, "auto">; why: string } {
+  if (mode !== "auto") return { gpu: mode, why: "asked for" };
+  const env = o.env ?? process.env;
+  const fromEnv = (env.EMU_GPU ?? "").trim().toLowerCase() as EmulatorGpu;
+  if (fromEnv && fromEnv !== "auto" && EMULATOR_GPU_MODES.includes(fromEnv)) return { gpu: fromEnv as Exclude<EmulatorGpu, "auto">, why: "EMU_GPU" };
+  const platform = o.platform ?? process.platform;
+  if (platform !== "linux") return { gpu: "host", why: "host GPU" };
+  if (!env.DISPLAY && !env.WAYLAND_DISPLAY) return { gpu: "swiftshader_indirect", why: "no display (DISPLAY and WAYLAND_DISPLAY unset)" };
+  if (!(o.hasRenderNode ?? linuxRenderNode)()) return { gpu: "swiftshader_indirect", why: "no GPU render node in /dev/dri" };
+  return { gpu: "host", why: "host GPU" };
+}
+
 /** Injection points for tests (a fake adb, no real processes). */
 export interface EmulatorDeps {
   adbFactory?: (loc: Locations, env: NodeJS.ProcessEnv) => Adb;
@@ -82,6 +115,8 @@ export interface EmulatorDeps {
   findProcesses?: (name: RegExp) => Promise<ProcInfo[]>;
   getProcessInfo?: (pid: number) => Promise<ProcInfo | null>;
   timing?: Partial<EmulatorTiming>;
+  /** Linux: is there a GPU render node (default: /dev/dri/renderD*). */
+  hasRenderNode?: () => boolean;
 }
 
 export interface StartOptions {
@@ -93,6 +128,8 @@ export interface StartOptions {
   coldBoot?: boolean;
   /** Device audio stays off unless this is true. */
   audio?: boolean;
+  /** -gpu for a launch (default "auto": resolveEmulatorGpu). Not used when the emulator already runs. */
+  gpu?: EmulatorGpu;
   /** Time for the emulator to show up and finish booting (default 300 s). */
   bootTimeoutSec?: number;
   env?: NodeJS.ProcessEnv;
@@ -224,6 +261,9 @@ export async function startEmulator(o: StartOptions): Promise<StartResult> {
   if (!Number.isFinite(hours) || hours <= 0) {
     throw new EmuError("BAD_OPTION", `hours must be more than 0 (got ${hours}).`);
   }
+  if (o.gpu !== undefined && !EMULATOR_GPU_MODES.includes(o.gpu)) {
+    throw new EmuError("BAD_OPTION", `gpu must be ${EMULATOR_GPU_MODES.join(", ")} (got ${o.gpu}).`);
+  }
   const bootTimeoutSec = o.bootTimeoutSec ?? DEFAULT_BOOT_TIMEOUT_SEC;
   if (!Number.isFinite(bootTimeoutSec) || bootTimeoutSec <= 0) {
     throw new EmuError("BAD_OPTION", `boot timeout must be more than 0 seconds (got ${bootTimeoutSec}).`);
@@ -275,7 +315,9 @@ export async function startEmulator(o: StartOptions): Promise<StartResult> {
             `(or "avdHome" in ${loc.configPath}) at the folder that holds it.`,
         );
       }
-      const args = ["-avd", avd, "-no-boot-anim", "-gpu", "host"];
+      const gpu = resolveEmulatorGpu(o.gpu ?? "auto", { env: r.env, hasRenderNode: o.deps?.hasRenderNode });
+      if (gpu.gpu !== "host") report(`GPU -gpu ${gpu.gpu} (${gpu.why})`);
+      const args = ["-avd", avd, "-no-boot-anim", "-gpu", gpu.gpu];
       if (!o.audio) args.push("-no-audio");
       if (o.headless) args.push("-no-window");
       if (o.coldBoot) args.push("-no-snapshot-load");

@@ -29,6 +29,7 @@ import { killLiveBrowsers } from "./webgl/browser.ts";
 import { runWebglSmoke } from "./webgl/smoke.ts";
 import { buildUnity, DEFAULT_TIMEOUT_MINUTES, stopLiveBuilds } from "./build.ts";
 import { addTemplate } from "./template.ts";
+import { runDoctor } from "./doctor.ts";
 import { guardReport, guardRevert, guardSnapshot } from "./guard.ts";
 
 export type AdbFactory = (loc: Locations, env: NodeJS.ProcessEnv) => Adb;
@@ -298,18 +299,23 @@ export function createServer(o: ServerOptions = {}): McpServer {
         hours: hoursSchema,
         headless: z.boolean().optional().describe("Start the emulator without a window (default false)."),
         cold_boot: z.boolean().optional().describe("Ignore the quick-boot snapshot (slower, a clean boot; default false)."),
+        gpu: z
+          .enum(["auto", "host", "swiftshader_indirect", "guest"])
+          .optional()
+          .describe('Emulator -gpu for a launch (default "auto": the host GPU, or SwiftShader software rendering on a Linux host without a display or GPU).'),
         boot_timeout_sec: z.number().int().positive().max(1800).optional().describe("Time for the emulator to appear and finish booting (default 300)."),
         wait_sec: waitSecSchema,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ avd, hours, headless, cold_boot, boot_timeout_sec, wait_sec }) =>
+    async ({ avd, hours, headless, cold_boot, gpu, boot_timeout_sec, wait_sec }) =>
       runJob("start", avd, wait_sec ?? DEFAULT_WAIT_SEC, (report, a) =>
         startEmulator({
           avd: a,
           hours,
           headless,
           coldBoot: cold_boot,
+          gpu,
           bootTimeoutSec: boot_timeout_sec,
           env: env(),
           report,
@@ -706,6 +712,21 @@ export function createServer(o: ServerOptions = {}): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
     async (a) => guard((report) => guardRevert({ projectPath: a.project_path, keep: a.keep, stateDir: a.state_dir, env: env(), report })),
+  );
+
+  server.registerTool(
+    "emu_doctor",
+    {
+      title: "Check this host",
+      description:
+        "Check this PC for the lab before anything else (changes nothing): emulator acceleration (KVM on Linux, Hypervisor.framework on macOS, WHPX/AEHD on Windows), the emulator -gpu mode, Unity editors and build modules, the person's project (project_path: Unity version, modules, open in an Editor, git and the guard snapshot, Android ABI), the Android SDK and AVD, disk space and a browser for WebGL. Each line is OK, TODO (an agent may do it after the person agrees, e.g. installing the Android SDK = accepting its license), HUMAN (only the person can: BIOS, admin rights, Unity Hub installs, reboot), WARN, FAIL or INFO. Tell the person every HUMAN line as written and wait; never change system settings yourself.",
+      inputSchema: {
+        target: z.enum(["Android", "WebGL", "Windows", "Both"]).optional().describe('What the person tests (default "Both" = Android and WebGL; pass only the target(s) used).'),
+        project_path: z.string().min(1).optional().describe("The person's Unity project, to check it too."),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (a) => guard((report) => runDoctor({ target: a.target, projectPath: a.project_path, env: env(), report })),
   );
 
   server.registerTool(

@@ -6,7 +6,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { resolveLocations } from "./config.ts";
-import { getStatus, releaseEmulator, renew, startEmulator, type StatusResult } from "./emulator.ts";
+import { EMULATOR_GPU_MODES, getStatus, releaseEmulator, renew, startEmulator, type EmulatorGpu, type StatusResult } from "./emulator.ts";
 import { formatError } from "./jobs.ts";
 import { checkNotification } from "./notification.ts";
 import { runStamp } from "./rundir.ts";
@@ -17,6 +17,7 @@ import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
 import { runWebglSmoke } from "./webgl/smoke.ts";
 import { buildUnity, type WebglCompression } from "./build.ts";
 import { addTemplate } from "./template.ts";
+import { runDoctor, type DoctorTarget } from "./doctor.ts";
 import { guardReport, guardRevert, guardSnapshot } from "./guard.ts";
 import { BUILD_TARGETS, type BuildTarget } from "./unity.ts";
 
@@ -59,11 +60,16 @@ and Unity WebGL builds in a local browser; build Unity players in batchmode.
 Usage: emu-lab <command> [options]
 
 Commands:
+  doctor                     Check this host for the lab (changes nothing): emulator acceleration (KVM / Hypervisor.framework /
+                             WHPX), emulator GPU, Unity editors and modules, the project, the Android SDK and AVD, disk, browser
+      --target <android|webgl|windows|both> (default both) --project <unity project>
+      exit 0 ready, 2 only [TODO] left (an agent can do them after the person agrees), 1 [HUMAN] or [FAIL] left
   status                     Lease, running emulators, boot state, paths and adb version (changes nothing)
   start                      Lease the AVD and boot it (or reuse it)
       --hours <h>            lease length (default 4)      --headless     no emulator window
       --cold-boot            ignore the quick-boot snapshot --audio       keep device audio (default off)
       --boot-timeout <s>     time to boot (default 300)
+      --gpu <auto|host|swiftshader_indirect|guest>  emulator GPU (auto: SwiftShader on a Linux host without display or GPU)
   renew [--hours <h>]        Extend this session's lease
   release                    Reset the device, stop the emulator if this lease started it, delete the lease
       --uninstall            uninstall the apps installed under the lease
@@ -180,6 +186,7 @@ const OPTIONS = {
   replace: { type: "boolean" },
   keep: { type: "string", multiple: true },
   "state-dir": { type: "string" },
+  project: { type: "string" },
 } as const;
 
 type OptionName = keyof typeof OPTIONS;
@@ -188,8 +195,9 @@ const GLOBAL: OptionName[] = ["help", "version", "json", "avd", "owner"];
 
 /** Options each command accepts (besides the global ones). */
 const COMMAND_OPTIONS: Record<string, OptionName[]> = {
+  doctor: ["target", "project"],
   status: [],
-  start: ["hours", "headless", "cold-boot", "audio", "boot-timeout"],
+  start: ["hours", "headless", "cold-boot", "audio", "boot-timeout", "gpu"],
   renew: ["hours"],
   release: ["uninstall", "package", "keep-running", "any-owner", "stale"],
   smoke: [
@@ -256,6 +264,7 @@ const COMMAND_OPTIONS: Record<string, OptionName[]> = {
 
 /** Positional arguments each command takes: [min, max]. */
 const POSITIONALS: Record<string, [number, number]> = {
+  doctor: [0, 0],
   status: [0, 0],
   start: [0, 0],
   renew: [0, 0],
@@ -410,6 +419,15 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
 
   try {
     switch (command) {
+      case "doctor": {
+        const t = (values.target ?? "both").toLowerCase();
+        const target = ({ android: "Android", webgl: "WebGL", windows: "Windows", both: "Both" } as Record<string, DoctorTarget>)[t];
+        if (!target) throw new UsageError(`doctor --target must be android, webgl, windows or both (got '${values.target}').`);
+        const d = await runDoctor({ target, projectPath: values.project ? path.resolve(values.project) : undefined, env, report: values.json ? () => {} : report });
+        result = d;
+        code = d.exit_code;
+        break;
+      }
       case "status": {
         const s = await getStatus({ avd, owner, env });
         if (!values.json) printStatus(s, io.out);
@@ -417,7 +435,11 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
         break;
       }
       case "start":
+        if (values.gpu !== undefined && !EMULATOR_GPU_MODES.includes(values.gpu as EmulatorGpu)) {
+          throw new UsageError(`--gpu must be ${EMULATOR_GPU_MODES.join(", ")} (got '${values.gpu}').`);
+        }
         result = await startEmulator({
+          gpu: values.gpu as EmulatorGpu | undefined,
           avd,
           owner,
           hours: num(values, "hours"),

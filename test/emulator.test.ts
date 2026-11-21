@@ -11,6 +11,7 @@ import {
   getStatus,
   releaseEmulator,
   renew,
+  resolveEmulatorGpu,
   startEmulator,
   type EmulatorDeps,
   type EmulatorTiming,
@@ -314,7 +315,7 @@ describe("startEmulator", { concurrency: 4 }, () => {
 
   test("launches the AVD: args, logs, lease records the qemu instance", async () => {
     const l = lab({ device: { running: false } });
-    const r = await startEmulator({ env: l.env, report: l.report, deps: l.deps });
+    const r = await startEmulator({ env: l.env, report: l.report, deps: { ...l.deps, hasRenderNode: () => true }, gpu: "host" });
     assert.equal(r.launched, true);
     assert.equal(r.serial, SERIAL);
     assert.equal(l.spawned.length, 1);
@@ -342,11 +343,24 @@ describe("startEmulator", { concurrency: 4 }, () => {
       l.procs.list.push({ pid: 7000, name: "emulator", startTime: launcherStart });
       return { pid: 7000, exited: () => false, exitCode: () => null };
     };
-    await startEmulator({ env: l.env, headless: true, coldBoot: true, audio: true, report: l.report, deps: l.deps });
+    await startEmulator({ env: l.env, headless: true, coldBoot: true, audio: true, gpu: "host", report: l.report, deps: l.deps });
     assert.deepEqual(l.spawned[0].args, ["-avd", AVD, "-no-boot-anim", "-gpu", "host", "-no-window", "-no-snapshot-load"]);
     const lease = await readLease(l.file);
     assert.equal(lease?.emulatorPid, 7000);
     assert.equal(lease?.emulatorStartedAt, formatLocalIso(launcherStart));
+  });
+
+  test("gpu: an explicit mode is passed to the emulator and said in the report", async () => {
+    const l = lab({ device: { running: false } });
+    await startEmulator({ env: l.env, gpu: "swiftshader_indirect", report: l.report, deps: l.deps });
+    assert.deepEqual(l.spawned[0].args.slice(0, 5), ["-avd", AVD, "-no-boot-anim", "-gpu", "swiftshader_indirect"]);
+    assert.ok(has(l, "GPU -gpu swiftshader_indirect (asked for)"));
+  });
+
+  test("gpu: a mode the emulator does not know is BAD_OPTION before the lease", async () => {
+    const l = lab({ device: { running: false } });
+    await assert.rejects(startEmulator({ env: l.env, gpu: "vulkan" as never, report: l.report, deps: l.deps }), (e: unknown) => isEmuError(e, "BAD_OPTION"));
+    assert.equal(existsSync(l.file), false);
   });
 
   test("EMULATOR_EXITED names the err log and keeps the lease of the launch", async () => {
@@ -942,5 +956,26 @@ describe("releaseEmulator forgets the clocks moved under the lease it gives back
     } finally {
       resetClockRegistry();
     }
+  });
+});
+
+describe("resolveEmulatorGpu", () => {
+  test("auto: host GPU on Windows and macOS", () => {
+    assert.deepEqual(resolveEmulatorGpu("auto", { platform: "win32", env: {} }), { gpu: "host", why: "host GPU" });
+    assert.deepEqual(resolveEmulatorGpu("auto", { platform: "darwin", env: {} }), { gpu: "host", why: "host GPU" });
+  });
+
+  test("auto on Linux: SwiftShader without a display or without a GPU render node, else host", () => {
+    assert.equal(resolveEmulatorGpu("auto", { platform: "linux", env: {}, hasRenderNode: () => true }).gpu, "swiftshader_indirect");
+    assert.match(resolveEmulatorGpu("auto", { platform: "linux", env: {}, hasRenderNode: () => true }).why, /no display/);
+    assert.equal(resolveEmulatorGpu("auto", { platform: "linux", env: { DISPLAY: ":0" }, hasRenderNode: () => false }).gpu, "swiftshader_indirect");
+    assert.equal(resolveEmulatorGpu("auto", { platform: "linux", env: { WAYLAND_DISPLAY: "wayland-0" }, hasRenderNode: () => true }).gpu, "host");
+  });
+
+  test("EMU_GPU picks the auto mode; an explicit mode wins over it", () => {
+    assert.deepEqual(resolveEmulatorGpu("auto", { platform: "linux", env: { EMU_GPU: "host" } }), { gpu: "host", why: "EMU_GPU" });
+    assert.equal(resolveEmulatorGpu("auto", { platform: "win32", env: { EMU_GPU: "swiftshader_indirect" } }).gpu, "swiftshader_indirect");
+    assert.equal(resolveEmulatorGpu("auto", { platform: "win32", env: { EMU_GPU: "nonsense" } }).gpu, "host");
+    assert.equal(resolveEmulatorGpu("guest", { platform: "linux", env: { EMU_GPU: "host" } }).gpu, "guest");
   });
 });
