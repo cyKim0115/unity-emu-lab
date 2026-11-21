@@ -5,10 +5,21 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isEmuError } from "../src/errors.ts";
-import { defaultStateDir, fileHashText, guardReport, guardRevert, guardSnapshot, guardState, parseNumstatZ, parseStatusZ, type GuardOptions } from "../src/guard.ts";
+import {
+  assertCompleteZ,
+  defaultStateDir,
+  fileHashText,
+  guardReport,
+  guardRevert,
+  guardSnapshot,
+  guardState,
+  parseNumstatZ,
+  parseStatusZ,
+  type GuardOptions,
+} from "../src/guard.ts";
 import type { LockProbe, UnityProcess } from "../src/project-lock.ts";
 import { addTemplate } from "../src/template.ts";
 import { tempLabHome } from "./helpers/fake.ts";
@@ -104,8 +115,15 @@ describe("parsers", () => {
     ]);
   });
 
-  test("numstat -z paths", () => {
+  test("numstat -z paths (a tab inside a path stays part of it)", () => {
     assert.deepEqual(parseNumstatZ("1\t1\tAssets/A.cs\0-\t-\tAssets/tex.bin\0"), ["Assets/A.cs", "Assets/tex.bin"]);
+    assert.deepEqual(parseNumstatZ("1\t0\tAssets/a\tb.txt\0"), ["Assets/a\tb.txt"]);
+  });
+
+  test("-z output cut in the middle of a record is refused", () => {
+    assertCompleteZ("", "x");
+    assertCompleteZ(" M a\0", "x");
+    assert.throws(() => assertCompleteZ(" M a\0?? Assets/hal", "git status"), /middle of a record/);
   });
 
   test("file hash in the PowerShell form", async () => {
@@ -323,6 +341,107 @@ describe("the revert stops before changing anything", () => {
     assert.ok(rep.created.includes("Assets/Nested/"), JSON.stringify(rep.created));
     await refused(guardRevert(b.o()), "GUARD_REFUSED", /not a file that can be moved/);
     assert.equal(read(proj, "Assets/B.asset"), "b: build\n");
+  });
+});
+
+describe("more cases the revert must get right", () => {
+  test("a backup patch that does not reverse-apply stops the revert before anything changes; the cycle stays open", async () => {
+    const { proj } = repo();
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    write(proj, "Assets/B.asset", "b: build\n");
+    write(proj, "Assets/Gen.cs", "// gen\n");
+    const rep = await guardReport(b.o());
+    const failCheck = (args: string[]) => {
+      if (args.includes("apply") && args.includes("--check")) throw new Error("error: patch does not apply");
+    };
+    await assert.rejects(guardRevert(b.o({ deps: { lock: FREE, gitHook: failCheck } })), /patch does not apply/);
+    assert.equal(read(proj, "Assets/B.asset"), "b: build\n");
+    assert.ok(existsSync(path.join(proj, "Assets", "Gen.cs")), "created files are moved only after the reverts");
+    assert.ok(existsSync(path.join(rep.state_dir, "snapshot.json")), "not archived: the cycle is not finished");
+    // Once git is fine again the same report reverts.
+    const rev = await guardRevert(b.o());
+    assert.deepEqual(rev.reverted, ["Assets/B.asset"]);
+  });
+
+  test("a failure in the second batch leaves the first batch reverted and says so; nothing is moved", async () => {
+    const { proj, top } = repo();
+    for (let i = 0; i < 45; i++) write(proj, `Assets/Many/f${i}.txt`, `${i}\n`);
+    git(top, ["add", "-A"]);
+    git(top, ["commit", "-q", "-m", "many"]);
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    for (let i = 0; i < 45; i++) write(proj, `Assets/Many/f${i}.txt`, `build ${i}\n`);
+    write(proj, "Assets/Gen.cs", "// gen\n");
+    await guardReport(b.o());
+    let checks = 0;
+    const failSecond = (args: string[]) => {
+      if (args.includes("apply") && args.includes("--check") && ++checks === 2) throw new Error("second batch refused");
+    };
+    await assert.rejects(guardRevert(b.o({ deps: { lock: FREE, gitHook: failSecond } })), /second batch refused/);
+    const still = porcelain(top).split("\n").filter((l) => l.includes("Assets/Many/"));
+    assert.equal(still.length, 5, still.join("\n"));
+    assert.ok(existsSync(path.join(proj, "Assets", "Gen.cs")));
+  });
+
+  test("staged-and-modified files new since the snapshot (MM) are never reverted", async () => {
+    const { proj, top } = repo();
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    write(proj, "Assets/A.cs", "class A { staged }\n");
+    git(top, ["add", "Assets/A.cs"]);
+    write(proj, "Assets/A.cs", "class A { staged; more }\n");
+    const rep = await guardReport(b.o());
+    assert.deepEqual(rep.staged_not_reverted, ["Assets/A.cs"]);
+    assert.deepEqual(rep.changed, []);
+    await guardRevert(b.o());
+    assert.equal(read(proj, "Assets/A.cs"), "class A { staged; more }\n");
+  });
+
+  test("a reported change the person staged after the report is left alone", async () => {
+    const { proj, top } = repo();
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    write(proj, "Assets/B.asset", "b: build\n");
+    await guardReport(b.o());
+    git(top, ["add", "Assets/B.asset"]);
+    const rev = await guardRevert(b.o());
+    assert.deepEqual(rev.reverted, []);
+    assert.equal(read(proj, "Assets/B.asset"), "b: build\n");
+  });
+
+  test("the project folder itself is never removed (project = repository root)", async () => {
+    const { proj } = repo();
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    write(proj, "build-report.txt", "x");
+    await guardReport(b.o());
+    const rev = await guardRevert(b.o());
+    assert.deepEqual(rev.moved.map((m) => m.path), ["build-report.txt"]);
+    assert.deepEqual(rev.removed_empty_folders, []);
+    assert.ok(existsSync(path.join(proj, "Assets")));
+  });
+
+  test("a symbolic link the build created is moved as a link, its target untouched", { skip: process.platform === "win32" ? "symlinks need extra rights on Windows" : false }, async () => {
+    const { proj } = repo();
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    symlinkSync("A.cs", path.join(proj, "Assets", "link.cs"));
+    await guardReport(b.o());
+    const rev = await guardRevert(b.o());
+    assert.ok(lstatSync(rev.moved[0].to).isSymbolicLink());
+    assert.equal(read(proj, "Assets/A.cs"), "class A {}\n");
+  });
+
+  test("Linux: a path that differs only in case from a reported one counts as unreported", { skip: process.platform !== "linux" ? "needs a case-sensitive file system" : false }, async () => {
+    const { proj } = repo();
+    const b = bench(proj);
+    await guardSnapshot(b.o());
+    write(proj, "Assets/gen.cs", "// a\n");
+    await guardReport(b.o());
+    write(proj, "Assets/Gen.cs", "// b\n");
+    await refused(guardRevert(b.o()), "GUARD_REFUSED", /after the report/);
+    assert.ok(existsSync(path.join(proj, "Assets", "gen.cs")));
   });
 });
 

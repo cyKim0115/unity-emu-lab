@@ -1,6 +1,8 @@
 // Protect the person's Unity project around a build (AGENTS.md rule 5). Behavioural reference, rule for rule:
-// scripts/project-guard.ps1. The state files have the same names and keys, so a state folder can be shared with the
-// PowerShell script through stateDir.
+// scripts/project-guard.ps1. The state files have the same names and keys, so one state folder works with both, but the
+// default folders differ (here <labHome>/guard/..., the script's <clone>/artifacts/guard/...): to continue a cycle the
+// other side started, pass its folder as stateDir. Without it the other side's snapshot is not seen, and the report
+// and revert refuse ("No snapshot"), which is safe.
 //
 //   snapshot  ONCE, BEFORE the first build: record what is already changed. prebuild.patch backs up the tracked
 //             changes only; untracked files are listed and hashed, never moved or reverted, and not backed up. Keep the
@@ -19,6 +21,7 @@
 // that is a subfolder of a larger repository only looks at its own folder. snapshot and report change nothing in
 // the project.
 
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync, copyFileSync, constants } from "node:fs";
 import path from "node:path";
@@ -35,6 +38,8 @@ export interface GuardDeps {
   git?: string;
   /** Rename a file (tests: a cross-device failure). */
   rename?: (from: string, to: string) => void;
+  /** Called before every git command of the guard (tests: make one fail). */
+  gitHook?: (args: string[]) => void | Promise<void>;
 }
 
 export interface GuardOptions {
@@ -211,7 +216,8 @@ export function parseNumstatZ(raw: string): string[] {
   for (const rec of raw.split("\0")) {
     if (!rec) continue;
     const f = rec.split("\t");
-    if (f.length >= 3 && f[2]) out.add(f[2]);
+    const p = f.slice(2).join("\t");
+    if (f.length >= 3 && p) out.add(p);
   }
   return [...out];
 }
@@ -223,12 +229,64 @@ interface Git {
   run(args: string[]): Promise<string>;
 }
 
-function makeGit(exe: string): Git {
+/** How long stdout may stay open after git exited before its output counts as incomplete. */
+const GIT_OUTPUT_GRACE_MS = 30_000;
+
+/**
+ * Run git and return ALL of its stdout. Unlike runProcess (which gives the pipes 500 ms after the exit, for adb), this
+ * waits for stdout to end: a status or numstat cut short would hide paths, so it throws instead of returning a part.
+ */
+function runGitFull(exe: string, args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exe, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    let code: number | null | undefined;
+    let outEnded = false;
+    let done = false;
+    let grace: NodeJS.Timeout | undefined;
+    const finish = (e?: Error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(limit);
+      if (grace) clearTimeout(grace);
+      if (e) {
+        try {
+          child.kill();
+        } catch {
+          // gone
+        }
+        reject(e);
+        return;
+      }
+      resolve({ code: code ?? null, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
+    };
+    const check = () => {
+      if (code !== undefined && outEnded) finish();
+    };
+    child.stdout.on("data", (b: Buffer) => out.push(b));
+    child.stderr.on("data", (b: Buffer) => err.push(b));
+    child.stdout.on("end", () => {
+      outEnded = true;
+      check();
+    });
+    child.stdout.on("error", () => {});
+    child.stderr.on("error", () => {});
+    child.once("error", (e) => finish(e));
+    child.once("exit", (c) => {
+      code = c;
+      check();
+      if (!done) grace = setTimeout(() => finish(new Error(`git ${args.join(" ")}: its output did not end after it exited`)), GIT_OUTPUT_GRACE_MS);
+    });
+    const limit = setTimeout(() => finish(new Error(`git ${args.join(" ")} timed out`)), GIT_TIMEOUT_MS);
+  });
+}
+
+function makeGit(exe: string, hook?: (args: string[]) => void | Promise<void>): Git {
   return {
     async run(args: string[]): Promise<string> {
-      const full = ["-c", "core.quotePath=false", "--literal-pathspecs", ...args];
-      const r = await runProcess(exe, full, { timeoutMs: GIT_TIMEOUT_MS });
-      if (r.timedOut) throw new Error(`git ${args.join(" ")} timed out`);
+      if (hook) await hook(args);
+      const r = await runGitFull(exe, ["-c", "core.quotePath=false", "--literal-pathspecs", ...args]);
       if (r.code !== 0) throw new Error(`git ${args.join(" ")} failed (${r.code}): ${r.stderr.trim()}`);
       return r.stdout;
     },
@@ -269,7 +327,7 @@ async function openRepo(o: GuardOptions): Promise<Repo> {
   let project = path.resolve(o.projectPath);
   if (project.length > path.parse(project).root.length) project = project.replace(/[\\/]+$/, "");
   const exe = o.deps?.git ?? "git";
-  const git = makeGit(exe);
+  const git = makeGit(exe, o.deps?.gitHook);
   let probe;
   try {
     probe = await runProcess(exe, ["-C", project, "rev-parse", "--show-toplevel"], { timeoutMs: GIT_TIMEOUT_MS });
@@ -319,8 +377,15 @@ async function openRepo(o: GuardOptions): Promise<Repo> {
   return { git, project, top, prefix, head, stateDir, snapFile: path.join(stateDir, "snapshot.json"), reportFile: path.join(stateDir, "report.json") };
 }
 
+/** -z output is complete only when it is empty or ends with NUL. */
+export function assertCompleteZ(raw: string, what: string): void {
+  if (raw !== "" && !raw.endsWith("\0")) throw new Error(`${what}: the output ends in the middle of a record (cut short?); nothing was changed`);
+}
+
 async function gitStatus(r: Repo): Promise<StatusEntry[]> {
-  return parseStatusZ(await r.git.run(["-C", r.top, "status", "--porcelain=v1", "-z", "-uall", "--", r.prefix || "."]));
+  const raw = await r.git.run(["-C", r.top, "status", "--porcelain=v1", "-z", "-uall", "--", r.prefix || "."]);
+  assertCompleteZ(raw, "git status");
+  return parseStatusZ(raw);
 }
 
 /** snapshot.json -> snapshot-<stamp>.json (-2, -3 ... when taken). Returns the new path, or null when absent. */
@@ -585,16 +650,13 @@ export async function guardRevert(o: GuardOptions & { keep?: string | string[] }
   if (rep.hashes === null || rep.hashes === undefined) {
     throw new EmuError("GUARD_REFUSED", "The report was written by an older project-guard without content hashes. Run the report again and show the list to the person. Nothing reverted.");
   }
-  const keepList = (Array.isArray(o.keep) ? o.keep : (o.keep ?? "").split("|")).map((k) => k.trim().replace(/\\/g, "/")).filter(Boolean);
-  const keepSet = new PathMap<string>();
-  for (const k of keepList) keepSet.set(k, k);
-  const approvedChanged = new PathMap<true>();
-  for (const p of toArray(rep.changed)) approvedChanged.set(p, true);
-  const approvedCreated = new PathMap<true>();
-  for (const p of toArray(rep.created)) approvedCreated.set(p, true);
-  const neverReverted = new PathMap<true>();
-  for (const p of [...toArray(rep.staged_not_reverted), ...toArray(rep.preexisting_changed_meanwhile)]) neverReverted.set(p, true);
-  const keepNames = keepSet.values();
+  // What the person approved is matched by exact text: a path that differs only in case from a reported one (possible
+  // on a case-sensitive volume) counts as unreported, so it is never reverted or moved without being shown first.
+  const keepSet = new Set((Array.isArray(o.keep) ? o.keep : (o.keep ?? "").split("|")).map((k) => k.trim().replace(/\\/g, "/")).filter(Boolean));
+  const approvedChanged = new Set(toArray(rep.changed));
+  const approvedCreated = new Set(toArray(rep.created));
+  const neverReverted = new Set([...toArray(rep.staged_not_reverted), ...toArray(rep.preexisting_changed_meanwhile)]);
+  const keepNames = [...keepSet];
   const unknownKeep = keepNames.filter((k) => !approvedChanged.has(k) && !approvedCreated.has(k) && !neverReverted.has(k));
   if (unknownKeep.length) {
     throw new EmuError("GUARD_REFUSED", `keep names paths that are not in the report: ${unknownKeep.join(", ")}. Copy them exactly as the report printed them. Nothing reverted.`);
@@ -641,9 +703,11 @@ export async function guardRevert(o: GuardOptions & { keep?: string | string[] }
     const patch = path.join(backup, `build-changes-${batch}.patch`);
     await r.git.run(["-C", r.top, "diff", "--binary", "--no-renames", `--output=${patch}`, "--", ...chunk]);
     // The patch must cover exactly these paths and reverse-apply cleanly before anything is checked out.
-    const inPatch = parseNumstatZ(await r.git.run(["-C", r.top, "apply", "--numstat", "-z", patch]));
-    const want = new Set(chunk.map(keyOf));
-    const got = new Set(inPatch.map(keyOf));
+    const numstat = await r.git.run(["-C", r.top, "apply", "--numstat", "-z", patch]);
+    assertCompleteZ(numstat, "git apply --numstat");
+    const inPatch = parseNumstatZ(numstat);
+    const want = new Set(chunk);
+    const got = new Set(inPatch);
     if (want.size !== got.size || [...want].some((k) => !got.has(k))) {
       throw new EmuError(
         "GUARD_REFUSED",
@@ -676,19 +740,24 @@ export async function guardRevert(o: GuardOptions & { keep?: string | string[] }
   const dirs = [...new Set(toMove.map((p) => path.dirname(absOf(r.top, p))))].sort((a, b) => b.length - a.length);
   for (const d of dirs) {
     let cur = d;
-    while (
-      cur.length > projDir.length &&
-      keyOf(cur).startsWith(keyOf(projDir + sep)) &&
-      existsSync(cur) &&
-      statSync(cur).isDirectory() &&
-      !existsSync(`${cur}.meta`) &&
-      isEmptyDir(cur)
-    ) {
-      rmdirSync(cur);
-      const rel = cur.slice(projDir.length + 1);
-      report(`  removed empty folder ${rel}`);
-      removed.push(rel);
-      cur = path.dirname(cur);
+    try {
+      while (
+        cur.length > projDir.length &&
+        keyOf(cur).startsWith(keyOf(projDir + sep)) &&
+        existsSync(cur) &&
+        statSync(cur).isDirectory() &&
+        !existsSync(`${cur}.meta`) &&
+        isEmptyDir(cur)
+      ) {
+        rmdirSync(cur);
+        const rel = cur.slice(projDir.length + 1);
+        report(`  removed empty folder ${rel}`);
+        removed.push(rel);
+        cur = path.dirname(cur);
+      }
+    } catch (err) {
+      // The revert itself is done; an empty folder left behind is only reported.
+      report(`  WARN could not remove the empty folder ${cur}: ${(err as Error).message}`);
     }
   }
   for (const k of keepNames) {
