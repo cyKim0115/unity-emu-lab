@@ -10,10 +10,18 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # The npm package on every OS it supports: device-free tests (fake adb), the WebGL smoke tests in the runner's own
+    # Chrome (headless; EMU_BROWSER_TESTS=1 fails them instead of skipping when no browser is found) and, on Windows,
+    # the lease interop tests against the PowerShell scripts.
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: [22, 24]
+    env:
+      EMU_BROWSER_TESTS: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -24,3 +32,24 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  scripts:
+    # The Windows PowerShell 5.1 scripts: ASCII and parser check, then the PowerShell WebGL smoke test on a fake build.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Check scripts (ASCII, PowerShell 5.1 parser)
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-scripts.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: WebGL smoke (PowerShell) on a fake build
+        shell: powershell
+        run: |
+          node test/helpers/webgl-fixture.ts "$env:RUNNER_TEMP\webgl-fixture" pass
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\smoke-webgl.ps1 -BuildDir "$env:RUNNER_TEMP\webgl-fixture" -Headless -SettleSec 0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
