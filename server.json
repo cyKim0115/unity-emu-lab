@@ -1,0 +1,73 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.cyKim0115/unity-emu-lab",
+  "title": "Unity Emu Lab",
+  "description": "Self-test Unity builds: Android emulator smoke tests with a shared device lease, and WebGL in Chrome",
+  "repository": {
+    "url": "https://github.com/cyKim0115/unity-emu-lab",
+    "source": "github",
+    "id": "1464977204"
+  },
+  "websiteUrl": "https://github.com/cyKim0115/unity-emu-lab/blob/main/README.en.md",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "unity-emu-lab",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "ANDROID_SDK_ROOT",
+          "description": "Android SDK folder (default: Windows %USERPROFILE%\\Android\\Sdk, macOS ~/Library/Android/sdk, Linux ~/Android/Sdk)",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "ANDROID_AVD_HOME",
+          "description": "AVD folder (default ~/.android/avd)",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "EMU_AVD",
+          "description": "AVD to lease and boot (default unity-test)",
+          "isRequired": false
+        },
+        {
+          "name": "EMU_ADB",
+          "description": "adb executable to use, e.g. the one inside Unity so only one adb version runs",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "EMU_OWNER",
+          "description": "Lease owner name (default: Claude Code session, Codex thread, or user@host)",
+          "isRequired": false
+        },
+        {
+          "name": "EMU_LAB_HOME",
+          "description": "Leases, results and config (default ~/.emu-lab)",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "EMU_BROWSER",
+          "description": "Chrome, Edge or Chromium executable for the WebGL smoke test (default: usual install locations, then PATH)",
+          "isRequired": false,
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

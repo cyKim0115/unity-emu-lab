@@ -1,6 +1,7 @@
 {
   "name": "unity-emu-lab",
   "version": "0.1.0",
+  "mcpName": "io.github.cyKim0115/unity-emu-lab",
   "description": "MCP server and CLI to self-test Unity Android builds on an emulator: a device lease shared by several AI sessions, Unity-aware smoke checks (ready marker, crash or self-exit, ABI check, system dialogs), and checks outside the app (notification shade, tap back in, device clock); plus a WebGL smoke test in a local Chrome, Edge or Chromium.",
   "type": "module",
   "license": "MIT",
@@ -41,6 +42,7 @@
     "start": "node bin/emu-lab.js serve",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "prepack": "npm run build",
+    "version": "node -e \"const fs=require('fs');const v=require('./package.json').version;const s=JSON.parse(fs.readFileSync('server.json','utf8'));s.version=v;for(const p of s.packages)p.version=v;fs.writeFileSync('server.json',JSON.stringify(s,null,2)+'\\n')\" && git add server.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test test/*.test.ts"
   },
