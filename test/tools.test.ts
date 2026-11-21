@@ -14,6 +14,7 @@ import { createServer, pngSize } from "../src/server.ts";
 import type { LeaseRecord } from "../src/types.ts";
 import { isEmuError } from "../src/errors.ts";
 import { callsOffSerial, makeFakeAdb, otherDeviceRules, tempLabHome, TWO_DEVICES, type FakeRule } from "./helpers/fake.ts";
+// tempLabHome also gives the empty folder (no index.html) for emu_webgl_smoke.
 
 const AVD = "unity-test";
 const ME = "test:me";
@@ -157,10 +158,11 @@ const HINTS: Record<string, Hints> = {
   emu_clock: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   emu_screenshot: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   emu_job: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  emu_webgl_smoke: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
 };
 
 describe("tool list", () => {
-  test("all 9 tools, each with all four hints matching the spec", async () => {
+  test("all 10 tools, each with all four hints matching the spec", async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), Object.keys(HINTS).sort());
     for (const t of tools) {
@@ -182,10 +184,11 @@ describe("tool list", () => {
     for (const name of ["emu_start", "emu_smoke", "emu_check_notification", "emu_clock", "emu_status"]) {
       assert.match(byName.get(name)!, /BUSY/, name);
     }
-    for (const name of ["emu_start", "emu_smoke", "emu_check_notification", "emu_release"]) {
+    for (const name of ["emu_start", "emu_smoke", "emu_check_notification", "emu_release", "emu_webgl_smoke"]) {
       assert.match(byName.get(name)!, /job_id/, name);
       assert.match(byName.get(name)!, /emu_job/, name);
     }
+    assert.match(byName.get("emu_job")!, /emu_webgl_smoke/);
     assert.match(byName.get("emu_job")!, /JOB_UNKNOWN/);
   });
 
@@ -438,6 +441,21 @@ describe("emu_screenshot", () => {
     assert.equal(image.mimeType, "image/png");
     assert.deepEqual(pngSize(Buffer.from(image.data!, "base64")), { width: 4, height: 2 });
     assert.match(res.text, new RegExp(`SCREENSHOT avd=unity-test serial=${SERIAL} size=4x2 bytes=\\d+`));
+  });
+});
+
+describe("emu_webgl_smoke", () => {
+  test("a folder without index.html fails the job with NO_BUILD, without a lease and without touching the device", async () => {
+    const from = fake.commands().length;
+    const res = await call("emu_webgl_smoke", { build_dir: tempLabHome(), wait_sec: 30 });
+    assert.equal(res.isError, true);
+    assert.match(res.text, /NO_BUILD: No index\.html in /);
+    assert.deepEqual(commandsSince(from), [], "no adb command");
+  });
+
+  test("bad option values are refused by the schema", async () => {
+    const res = await call("emu_webgl_smoke", { build_dir: "x", ready_mode: "sometimes" });
+    assert.equal(res.isError, true);
   });
 });
 

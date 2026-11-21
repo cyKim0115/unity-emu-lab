@@ -1,8 +1,9 @@
 // MCP server: the emulator lab as tools over stdio. Every tool works on one AVD (default unity-test, or EMU_AVD)
 // under the shared lease file, so several AI sessions on one PC do not step on each other's device.
 //
-// - Long tools (emu_start, emu_smoke, emu_check_notification, emu_release) run as jobs in this process: the call
-//   waits up to wait_sec and otherwise returns a job_id for emu_job. One device-changing job per AVD at a time.
+// - Long tools (emu_start, emu_smoke, emu_check_notification, emu_release, emu_webgl_smoke) run as jobs in this
+//   process: the call waits up to wait_sec and otherwise returns a job_id for emu_job. One device-changing job per AVD
+//   at a time (emu_webgl_smoke uses no device and is not limited).
 // - Report lines are kept per call / per job and returned in the tool result; nothing is written to stdout except
 //   the MCP transport (serve() also points console.log at stderr as a safety net).
 // - Device-changing tools need our own lease (strict); emu_status and emu_screenshot change nothing.
@@ -24,6 +25,8 @@ import { getOwner } from "./owner.ts";
 import { runSmoke, type SmokeDeps } from "./smoke.ts";
 import type { Report } from "./types.ts";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
+import { killLiveBrowsers } from "./webgl/browser.ts";
+import { runWebglSmoke } from "./webgl/smoke.ts";
 
 export type AdbFactory = (loc: Locations, env: NodeJS.ProcessEnv) => Adb;
 
@@ -59,7 +62,8 @@ const INSTRUCTIONS = `Self-test Unity Android builds on a local Android emulator
 - emu_start, emu_smoke, emu_check_notification and emu_release run as jobs: if the call returns a job_id, call emu_job with that id (repeat while status is running). Never start the same tool again while its job runs; one device-changing job per AVD runs at a time.
 - emu_clock forward moves the device clock for long-delay notifications; always call emu_clock reset afterwards (if this server stops first, it puts the clock back itself).
 - Do not drive the device with mobile-mcp (or anything else using UiAutomation) while emu_smoke or emu_check_notification runs: they need UiAutomation for the notification shade and system dialogs.
-- Device audio stays off. emu_status and emu_screenshot change nothing and work without a lease.`;
+- Device audio stays off. emu_status and emu_screenshot change nothing and work without a lease.
+- emu_webgl_smoke tests a Unity WebGL build folder in a local headless or windowed Chrome/Edge/Chromium (throwaway profile, audio muted). It needs no emulator and no lease, and also runs as a job (emu_job). For a build that is not the bundled sample set ready_mode (loaded for Unity's Default template) or ready_marker, and no_tap or tap_marker.`;
 
 // ---------------------------------------------------------------------------------------------------
 // Device operations shared with the CLI
@@ -498,11 +502,98 @@ export function createServer(o: ServerOptions = {}): McpServer {
   );
 
   server.registerTool(
+    "emu_webgl_smoke",
+    {
+      title: "Smoke-test a WebGL build",
+      description:
+        "Serve a Unity WebGL build folder on localhost and open it in Chrome, Edge or Chromium (its own throwaway profile, audio muted) over DevTools: wait until it is ready (ready_mode marker = a console line, loaded = Unity Default template's loading bar is done, expression = JavaScript), click or touch the canvas, then collect console errors, exceptions, dialogs, the Unity error banner, a renderer crash and screenshots. Results (summary.json, console.txt, PNGs) go to run_dir; check pass in the result. Needs no emulator and no lease. Defaults are the bundled sample's console lines (SMOKE_APP_READY, SMOKE_TAP count=1); for another build set ready_mode or ready_marker, and no_tap or tap_marker. Runs as a job: if the result is a job_id, call emu_job with it and do not start the same test again meanwhile.",
+      inputSchema: {
+        build_dir: z.string().min(1).describe("The WebGL build folder on this PC (holds index.html)."),
+        ready_mode: z.enum(["marker", "loaded", "expression"]).optional().describe('How to tell the build is ready (default "marker").'),
+        ready_marker: z.string().min(1).optional().describe('ready_mode marker: text the build logs to the console when ready (default "SMOKE_APP_READY").'),
+        ready_expression: z.string().min(1).optional().describe("ready_mode expression: JavaScript that is truthy once the page is ready (use single quotes inside)."),
+        ready_timeout_sec: z.number().positive().optional().describe("How long to wait until ready (default 180)."),
+        tap_x: z.number().min(0).max(1).optional().describe("Tap position as a fraction of the canvas width (default 0.5)."),
+        tap_y: z.number().min(0).max(1).optional().describe("Tap position as a fraction of the canvas height (default 0.5)."),
+        tap_marker: z.string().min(1).optional().describe('Console text the build logs when the tap lands (default "SMOKE_TAP count=1").'),
+        tap_expression: z.string().min(1).optional().describe("Instead of tap_marker: JavaScript that is truthy once the tap took effect."),
+        tap_timeout_sec: z.number().positive().optional().describe("How long to wait for the tap to take effect (default 5)."),
+        tap_retry_sec: z.number().min(0).optional().describe("With tap_expression: tap again every N s until it is truthy, within tap_timeout_sec (a title screen that ignores input during its intro)."),
+        after_tap_expression: z.string().min(1).optional().describe("JavaScript awaited once after the tap was accepted (no more taps)."),
+        after_tap_timeout_sec: z.number().positive().optional().describe("How long to wait for after_tap_expression (default 120)."),
+        settle_sec: z.number().min(0).optional().describe("Final wait before the last screenshot and the summary (default 2)."),
+        fail_expression: z.string().min(1).optional().describe("JavaScript returning a non-empty string when the page shows its own error UI (fails the run)."),
+        info_expression: z.string().min(1).optional().describe("JavaScript whose value is recorded as page_info."),
+        no_tap: z.boolean().optional().describe("Skip the tap step."),
+        no_tap_check: z.boolean().optional().describe("Tap, but do not wait for tap_marker or tap_expression."),
+        tap_input: z.enum(["mouse", "touch"]).optional().describe('"mouse" (default) or "touch" (touch emulation on).'),
+        width: z.number().int().min(100).max(8192).optional().describe("Viewport width in CSS px (default 1280)."),
+        height: z.number().int().min(100).max(8192).optional().describe("Viewport height in CSS px (default 900)."),
+        headless: z.boolean().optional().describe("Run the browser without a window (default false)."),
+        browser: z.string().min(1).optional().describe("Browser executable (default EMU_BROWSER, CHROME_PATH, then the usual Chrome, Edge and Chromium locations)."),
+        browser_args: z.array(z.string().min(1)).optional().describe('More browser switches, e.g. ["--no-sandbox"].'),
+        gpu: z.enum(["auto", "host", "swiftshader"]).optional().describe('"auto" (default): SwiftShader (software WebGL) for a headless run on a Linux host without a display, else the host GPU.'),
+        no_isolation: z.boolean().optional().describe("Serve without COOP/COEP (a single-threaded build whose template loads cross-origin files without CORP/CORS, or to match a host such as GitHub Pages)."),
+        keep_profile: z.boolean().optional().describe("Keep the throwaway browser profile in run_dir (tens of MB) for debugging."),
+        fail_on_console_error: z.boolean().optional().describe("Every console error fails the run, not only the fatal ones (default false)."),
+        ignore_errors: z.string().min(1).optional().describe("Regex (JavaScript, case-insensitive): console errors and exceptions that match are ignored, e.g. a third-party analytics script."),
+        fail_on_blank: z.boolean().optional().describe("Fail when the canvas in the final screenshot is a single flat colour (nothing drawn). canvas_blank is recorded either way."),
+        wait_sec: waitSecSchema,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (a) => {
+      let id: string;
+      try {
+        id = jobs.startJob("webgl", (report) =>
+          runWebglSmoke({
+            buildDir: a.build_dir,
+            readyMode: a.ready_mode,
+            readyMarker: a.ready_marker,
+            readyExpression: a.ready_expression,
+            readyTimeoutSec: a.ready_timeout_sec,
+            tapX: a.tap_x,
+            tapY: a.tap_y,
+            tapMarker: a.tap_marker,
+            tapExpression: a.tap_expression,
+            tapTimeoutSec: a.tap_timeout_sec,
+            tapRetrySec: a.tap_retry_sec,
+            afterTapExpression: a.after_tap_expression,
+            afterTapTimeoutSec: a.after_tap_timeout_sec,
+            settleSec: a.settle_sec,
+            failExpression: a.fail_expression,
+            infoExpression: a.info_expression,
+            noTap: a.no_tap,
+            noTapCheck: a.no_tap_check,
+            tapInput: a.tap_input,
+            width: a.width,
+            height: a.height,
+            headless: a.headless,
+            browser: a.browser,
+            browserArgs: a.browser_args,
+            gpu: a.gpu,
+            noIsolation: a.no_isolation,
+            keepProfile: a.keep_profile,
+            failOnConsoleError: a.fail_on_console_error,
+            ignoreErrors: a.ignore_errors,
+            failOnBlank: a.fail_on_blank,
+            env: env(),
+            report,
+          }),
+        );
+      } catch (err) {
+        return fail(err, []);
+      }
+      return jobResult(await jobs.waitJob(id, a.wait_sec ?? DEFAULT_WAIT_SEC));
+    },
+  );
+
+  server.registerTool(
     "emu_job",
     {
       title: "Wait for a job",
       description:
-        "Wait for a job started by emu_start, emu_smoke, emu_check_notification or emu_release (job_id from their result) and return its result once it finished, or its status and latest report lines while it still runs (then call emu_job again). Without job_id it lists this server's jobs. JOB_UNKNOWN means the id is not known to this server (jobs do not survive a server restart): list the jobs or check emu_status.",
+        "Wait for a job started by emu_start, emu_smoke, emu_check_notification, emu_release or emu_webgl_smoke (job_id from their result) and return its result once it finished, or its status and latest report lines while it still runs (then call emu_job again). Without job_id it lists this server's jobs. JOB_UNKNOWN means the id is not known to this server (jobs do not survive a server restart): list the jobs or check emu_status.",
       inputSchema: {
         job_id: z.string().min(1).optional().describe("The job_id to wait for; omit to list the jobs."),
         wait_sec: z.number().int().min(0).max(JOB_MAX_WAIT_SEC).optional().describe("How long to wait for the job to finish (default 50, max 600)."),
@@ -554,6 +645,9 @@ export function makeShutdown(o: {
       } catch (err) {
         o.log(`${PACKAGE_NAME}: close failed: ${(err as Error).message}`);
       }
+      // A WebGL smoke's browser would outlive us (its finally block never runs once the process exits).
+      const browsers = killLiveBrowsers();
+      if (browsers) o.log(`${PACKAGE_NAME}: stopped ${browsers} browser(s) of a running WebGL smoke test.`);
       if (movedClockSerials().length) {
         await resetMovedClocks((line) => o.log(`${PACKAGE_NAME}: ${line}`), { timeoutMs: o.clockResetMs ?? SHUTDOWN_CLOCK_RESET_MS });
       }

@@ -73,7 +73,7 @@ describe("help and version", () => {
       const r = await run(args);
       assert.equal(r.code, 0, r.stderr);
       assert.match(r.stdout, /Usage: emu-lab <command> \[options\]/);
-      for (const cmd of ["status", "start", "renew", "release", "smoke <apk>", "notification", "clock forward <minutes>", "clock reset", "screenshot", "serve"]) {
+      for (const cmd of ["status", "start", "renew", "release", "smoke <apk>", "notification", "clock forward <minutes>", "clock reset", "screenshot", "webgl <build-dir>", "serve"]) {
         assert.ok(r.stdout.includes(cmd), `${args.join(" ")}: ${cmd}`);
       }
       assert.equal(r.stderr, "");
@@ -108,12 +108,30 @@ describe("usage errors exit 2", () => {
       ["clock", "forward", "-3"],
       ["notification", "--title", "Hello"],
       ["release", "--stale", "--any-owner"],
+      ["webgl"],
+      ["webgl", "a", "b"],
+      ["webgl", "dir", "--ready-mode", "sometimes"],
+      ["webgl", "dir", "--tap-input", "pen"],
+      ["webgl", "dir", "--gpu", "magic"],
+      ["webgl", "dir", "--width", "wide"],
+      ["webgl", "dir", "--notif-delay", "0"],
+      ["smoke", "app.apk", "--browser", "chrome"],
     ];
     for (const args of cases) {
       const r = await run(args);
       assert.equal(r.code, 2, `${args.join(" ")}: ${r.stdout}${r.stderr}`);
       assert.match(r.stderr, /^(USAGE|BAD_OPTION): /, args.join(" "));
     }
+  });
+});
+
+describe("webgl", () => {
+  test("a folder without index.html: NO_BUILD, exit 1, nothing started", async () => {
+    const dir = tempLabHome();
+    const r = await run(["webgl", dir]);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /^NO_BUILD: No index\.html in /);
+    assert.equal(r.stdout, "");
   });
 });
 

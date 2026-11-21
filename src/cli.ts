@@ -14,6 +14,7 @@ import { captureScreenshot, clockForward, clockReset, makeShutdown, serve, type 
 import { runSmoke } from "./smoke.ts";
 import type { Report } from "./types.ts";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
+import { runWebglSmoke } from "./webgl/smoke.ts";
 
 export interface CliIo {
   out: (line: string) => void;
@@ -48,7 +49,8 @@ function installSignalHandlers(err: (line: string) => void): () => void {
   };
 }
 
-export const USAGE = `${PACKAGE_NAME} ${PACKAGE_VERSION}: self-test Unity Android builds on a local emulator, shared by several sessions through a lease.
+export const USAGE = `${PACKAGE_NAME} ${PACKAGE_VERSION}: self-test Unity Android builds on a local emulator, shared by several sessions through a lease,
+and Unity WebGL builds in a local browser.
 
 Usage: emu-lab <command> [options]
 
@@ -76,7 +78,14 @@ Commands:
   clock forward <minutes>    Move the device clock ahead (always run clock reset afterwards) [--strict]
   clock reset                Put the device clock back to host time
   screenshot [file]          Save a PNG of the screen (default <lab home>/runs/<stamp>-screenshot-<pid>.png)
-  serve                      Run the MCP server on stdio (also: no command with stdin not a terminal)
+  webgl <build-dir>          Self-test a WebGL build in Chrome/Edge/Chromium (no emulator, no lease)
+      --ready-mode <marker|loaded|expression> --ready-marker <text> --ready-expression <js> --ready-timeout <s>
+      --tap-x <0..1> --tap-y <0..1> --tap-marker <text> --tap-expression <js> --tap-timeout <s> --tap-retry <s>
+      --after-tap-expression <js> --after-tap-timeout <s> --settle <s> --fail-expression <js> --info-expression <js>
+      --no-tap --no-tap-check --tap-input <mouse|touch> --width <px> --height <px> --headless --browser <exe>
+      --browser-arg=<switch> (repeatable) --gpu <auto|host|swiftshader> --no-isolation --keep-profile
+      --fail-on-console-error --ignore-error <regex> --fail-on-blank --out <dir>
+  serve                     Run the MCP server on stdio (also: no command with stdin not a terminal)
   help                       This text
   version                    Print the version (-v, --version)
 
@@ -124,6 +133,27 @@ const OPTIONS = {
   timeout: { type: "string" },
   "since-ms": { type: "string" },
   tap: { type: "boolean" },
+  "ready-mode": { type: "string" },
+  "ready-expression": { type: "string" },
+  "tap-expression": { type: "string" },
+  "tap-timeout": { type: "string" },
+  "tap-retry": { type: "string" },
+  "after-tap-expression": { type: "string" },
+  "after-tap-timeout": { type: "string" },
+  settle: { type: "string" },
+  "fail-expression": { type: "string" },
+  "info-expression": { type: "string" },
+  "tap-input": { type: "string" },
+  width: { type: "string" },
+  height: { type: "string" },
+  browser: { type: "string" },
+  "browser-arg": { type: "string", multiple: true },
+  gpu: { type: "string" },
+  "no-isolation": { type: "boolean" },
+  "keep-profile": { type: "boolean" },
+  "fail-on-console-error": { type: "boolean" },
+  "ignore-error": { type: "string" },
+  "fail-on-blank": { type: "boolean" },
 } as const;
 
 type OptionName = keyof typeof OPTIONS;
@@ -158,6 +188,38 @@ const COMMAND_OPTIONS: Record<string, OptionName[]> = {
   notification: ["package", "title", "timeout", "since-ms", "tap", "opened-marker", "out", "strict"],
   clock: ["strict"],
   screenshot: [],
+  webgl: [
+    "ready-mode",
+    "ready-marker",
+    "ready-expression",
+    "ready-timeout",
+    "tap-x",
+    "tap-y",
+    "tap-marker",
+    "tap-expression",
+    "tap-timeout",
+    "tap-retry",
+    "after-tap-expression",
+    "after-tap-timeout",
+    "settle",
+    "fail-expression",
+    "info-expression",
+    "no-tap",
+    "no-tap-check",
+    "tap-input",
+    "width",
+    "height",
+    "headless",
+    "browser",
+    "browser-arg",
+    "gpu",
+    "no-isolation",
+    "keep-profile",
+    "fail-on-console-error",
+    "ignore-error",
+    "fail-on-blank",
+    "out",
+  ],
   serve: [],
   help: [],
   version: [],
@@ -173,6 +235,7 @@ const POSITIONALS: Record<string, [number, number]> = {
   notification: [0, 0],
   clock: [1, 2],
   screenshot: [0, 1],
+  webgl: [1, 1],
   serve: [0, 0],
   help: [0, 0],
   version: [0, 0],
@@ -281,7 +344,8 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
   }
   const [minPos, maxPos] = POSITIONALS[command];
   if (args.length < minPos || args.length > maxPos) {
-    const what = command === "smoke" ? "smoke <apk>" : command === "clock" ? "clock forward <minutes> | clock reset" : command;
+    const what =
+      command === "smoke" ? "smoke <apk>" : command === "webgl" ? "webgl <build-dir>" : command === "clock" ? "clock forward <minutes> | clock reset" : command;
     io.err(`USAGE: ${what}: wrong number of arguments (${args.join(" ") || "none"}). Run emu-lab help.`);
     return 2;
   }
@@ -421,6 +485,58 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
         const size = shot.width !== null ? `${shot.width}x${shot.height}` : "unknown";
         report(`SCREENSHOT file=${file} serial=${shot.serial} size=${size} bytes=${shot.png.length}`);
         result = { file, avd: shot.avd, serial: shot.serial, width: shot.width, height: shot.height, bytes: shot.png.length };
+        break;
+      }
+      case "webgl": {
+        const readyMode = values["ready-mode"];
+        if (readyMode !== undefined && !["marker", "loaded", "expression"].includes(readyMode.toLowerCase())) {
+          throw new UsageError(`--ready-mode must be marker, loaded or expression (got '${readyMode}').`);
+        }
+        const tapInput = values["tap-input"];
+        if (tapInput !== undefined && tapInput !== "mouse" && tapInput !== "touch") {
+          throw new UsageError(`--tap-input must be mouse or touch (got '${tapInput}').`);
+        }
+        const gpu = values.gpu;
+        if (gpu !== undefined && gpu !== "auto" && gpu !== "host" && gpu !== "swiftshader") {
+          throw new UsageError(`--gpu must be auto, host or swiftshader (got '${gpu}').`);
+        }
+        const summary = await runWebglSmoke({
+          buildDir: args[0],
+          readyMode: readyMode?.toLowerCase() as "marker" | "loaded" | "expression" | undefined,
+          readyMarker: values["ready-marker"],
+          readyExpression: values["ready-expression"],
+          readyTimeoutSec: num(values, "ready-timeout"),
+          tapX: num(values, "tap-x"),
+          tapY: num(values, "tap-y"),
+          tapMarker: values["tap-marker"],
+          tapExpression: values["tap-expression"],
+          tapTimeoutSec: num(values, "tap-timeout"),
+          tapRetrySec: num(values, "tap-retry"),
+          afterTapExpression: values["after-tap-expression"],
+          afterTapTimeoutSec: num(values, "after-tap-timeout"),
+          settleSec: num(values, "settle"),
+          failExpression: values["fail-expression"],
+          infoExpression: values["info-expression"],
+          noTap: values["no-tap"],
+          noTapCheck: values["no-tap-check"],
+          tapInput,
+          width: num(values, "width", { int: true }),
+          height: num(values, "height", { int: true }),
+          headless: values.headless,
+          browser: values.browser,
+          browserArgs: values["browser-arg"],
+          gpu,
+          noIsolation: values["no-isolation"],
+          keepProfile: values["keep-profile"],
+          failOnConsoleError: values["fail-on-console-error"],
+          ignoreErrors: values["ignore-error"],
+          failOnBlank: values["fail-on-blank"],
+          outDir: values.out,
+          env,
+          report,
+        });
+        result = summary;
+        if (!summary.pass) code = 1;
         break;
       }
       default:

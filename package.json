@@ -1,7 +1,7 @@
 {
   "name": "unity-emu-lab",
   "version": "0.1.0",
-  "description": "MCP server and CLI to self-test Unity Android builds on an emulator: a device lease shared by several AI sessions, Unity-aware smoke checks (ready marker, crash or self-exit, ABI check, system dialogs), and checks outside the app (notification shade, tap back in, device clock).",
+  "description": "MCP server and CLI to self-test Unity Android builds on an emulator: a device lease shared by several AI sessions, Unity-aware smoke checks (ready marker, crash or self-exit, ABI check, system dialogs), and checks outside the app (notification shade, tap back in, device clock); plus a WebGL smoke test in a local Chrome, Edge or Chromium.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -12,6 +12,8 @@
     "emulator",
     "adb",
     "smoke-test",
+    "webgl",
+    "chrome-devtools-protocol",
     "claude",
     "codex"
   ],

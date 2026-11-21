@@ -23,7 +23,9 @@ export type EmuErrorCode =
   | "ADB_FAILED" // an adb command failed in a way the caller cannot continue from
   | "CLOCK_FAILED" // the device clock could not be set
   | "JOB_UNKNOWN" // emu_job with an unknown job id
-  | "JOB_RUNNING"; // a device-changing job already runs on this AVD in this server process
+  | "JOB_RUNNING" // a device-changing job already runs on this AVD in this server process
+  | "NO_BUILD" // WebGL: the build folder has no index.html
+  | "NO_BROWSER"; // WebGL: no Chrome, Edge or Chromium found (or the given one does not exist)
 
 export class EmuError extends Error {
   readonly code: EmuErrorCode;
