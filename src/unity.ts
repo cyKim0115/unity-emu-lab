@@ -387,10 +387,13 @@ export function hasWebGL(root: string, platform: NodeJS.Platform = process.platf
  */
 export function windowsMissing(root: string, o: { platform?: NodeJS.Platform; backend?: "Mono" | "IL2CPP" } = {}): string[] {
   const platform = o.platform ?? process.platform;
-  const v = pathApi(platform).join(playbackEnginesDir(root, platform), "WindowsStandaloneSupport", "Variations");
+  // Every segment goes through findPathPattern, so a module folder in another case is found on Linux too.
+  const pe = playbackEnginesDir(root, platform);
   const miss: string[] = [];
-  if (!findPathPattern(v, "win64_*_mono", platform).length) miss.push("Windows Build Support (Mono)");
-  if (o.backend === "IL2CPP" && !findPathPattern(v, "win64_*_il2cpp", platform).length) miss.push("Windows Build Support (IL2CPP)");
+  if (!findPathPattern(pe, "WindowsStandaloneSupport/Variations/win64_*_mono", platform).length) miss.push("Windows Build Support (Mono)");
+  if (o.backend === "IL2CPP" && !findPathPattern(pe, "WindowsStandaloneSupport/Variations/win64_*_il2cpp", platform).length) {
+    miss.push("Windows Build Support (IL2CPP)");
+  }
   return miss;
 }
 

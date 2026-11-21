@@ -49,9 +49,10 @@ function labEnv(): Env {
   return { env, sdk, avd, home };
 }
 
-/** A complete SDK + AVD for this host's ABI. */
+/** A complete SDK + AVD for the given image ABI; adb and the emulator under both names, for tests that act as another OS. */
 function installSdk(e: Env, abi = "x86_64"): void {
-  for (const f of [`platform-tools/adb${EXE}`, `emulator/emulator${EXE}`, `system-images/android-35/google_apis/${abi}/system.img`]) {
+  const files = ["platform-tools/adb", "platform-tools/adb.exe", "emulator/emulator", "emulator/emulator.exe", `system-images/android-35/google_apis/${abi}/system.img`];
+  for (const f of files) {
     mkdirSync(path.dirname(path.join(e.sdk, f)), { recursive: true });
     writeFileSync(path.join(e.sdk, f), "");
   }
@@ -133,9 +134,12 @@ describe("emulator acceleration per host OS", () => {
     const e = labEnv();
     installSdk(e);
     const no = async () => "accel:\n6\nAndroid Emulator hypervisor driver is not installed on this machine\naccel\n";
-    const winR = await doctor(e, { p: { platform: "win32", accelCheck: no, winVirtualization: async () => ({ hypervisorPresent: false, firmwareEnabled: true }) } });
-    assert.equal(line(winR, "emulator-accel").status, "HUMAN");
-    assert.match(line(winR, "emulator-accel").message, /CPU virtualization is already on: enable the Windows feature "Windows Hypervisor Platform"/);
+    // Acting as Windows needs Windows paths (the SDK files are found through backslash-joined paths).
+    if (HOST === "win32") {
+      const winR = await doctor(e, { p: { platform: "win32", accelCheck: no, winVirtualization: async () => ({ hypervisorPresent: false, firmwareEnabled: true }) } });
+      assert.equal(line(winR, "emulator-accel").status, "HUMAN");
+      assert.match(line(winR, "emulator-accel").message, /CPU virtualization is already on: enable the Windows feature "Windows Hypervisor Platform"/);
+    }
     const linR = await doctor(e, { p: { platform: "linux", accelCheck: no, kvm: () => ({ exists: true, access: false }) } });
     assert.match(line(linR, "emulator-accel").message, /usermod -aG kvm/);
     assert.equal(linR.exit_code, 1);
