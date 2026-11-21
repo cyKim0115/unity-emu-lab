@@ -2,7 +2,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { browserArgs, findBrowser, resolveGpu } from "../src/webgl/browser.ts";
+import { browserArgs, disallowedBrowserArg, findBrowser, resolveGpu } from "../src/webgl/browser.ts";
 
 function existsIn(...files: string[]): (p: string) => boolean {
   const set = new Set(files);
@@ -62,6 +62,45 @@ describe("resolveGpu", () => {
   test("explicit modes are kept", () => {
     assert.equal(resolveGpu("swiftshader", { headless: false, platform: "win32", env: {} }), "swiftshader");
     assert.equal(resolveGpu("host", { headless: true, platform: "linux", env: {} }), "host");
+  });
+});
+
+describe("disallowedBrowserArg", () => {
+  test("the listed switches pass", () => {
+    const ok = [
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--ignore-gpu-blocklist",
+      "--enable-unsafe-swiftshader",
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+      "--lang=ko-KR",
+      "--force-device-scale-factor=1.5",
+      "--enable-features=Vulkan,WebGPU",
+      "--disable-features=UseSkiaRenderer",
+    ];
+    assert.equal(disallowedBrowserArg(ok), null);
+    assert.equal(disallowedBrowserArg(undefined), null);
+  });
+  test("switches that run a program, change the profile, DevTools port or audio, or anything unknown are refused", () => {
+    for (const bad of [
+      "--renderer-cmd-prefix=calc.exe",
+      "--gpu-launcher=cmd /c calc",
+      "--utility-cmd-prefix=sh -c id",
+      "--browser-subprocess-path=/tmp/x",
+      "--user-data-dir=C:\\Users\\me\\AppData\\Local\\Google\\Chrome\\User Data",
+      "--remote-debugging-port=9222",
+      "--remote-debugging-address=0.0.0.0",
+      "--load-extension=/tmp/ext",
+      "--disable-web-security",
+      "--autoplay-policy=no-user-gesture-required",
+      "--lang=en;calc",
+      "--use-gl=angle --gpu-launcher=x",
+      "http://example.com",
+    ]) {
+      assert.equal(disallowedBrowserArg(["--no-sandbox", bad]), bad, bad);
+    }
   });
 });
 

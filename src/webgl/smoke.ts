@@ -24,7 +24,7 @@ import { EmuError } from "../errors.ts";
 import { sleep } from "../proc.ts";
 import { newRunDir } from "../rundir.ts";
 import type { Report } from "../types.ts";
-import { browserArgs, findBrowser, launchBrowser, resolveGpu, type GpuMode, type LaunchedBrowser } from "./browser.ts";
+import { browserArgs, disallowedBrowserArg, findBrowser, launchBrowser, resolveGpu, type GpuMode, type LaunchedBrowser } from "./browser.ts";
 import { CdpClient, clickAt, evaluate, findPageTarget, type CdpMessage } from "./cdp.ts";
 import { decodePng, dominantColorRatio } from "./png.ts";
 import { startStaticServer, type StaticServer } from "./serve.ts";
@@ -106,9 +106,12 @@ export interface WebglSmokeOptions {
   width?: number;
   height?: number;
   headless?: boolean;
-  /** Browser executable; default EMU_BROWSER, CHROME_PATH, then the usual install locations. */
+  /**
+   * Browser executable; default EMU_BROWSER, CHROME_PATH, then the usual install locations. CLI only: the MCP tool does
+   * not take it (a tool call must not choose a program to run).
+   */
   browser?: string;
-  /** More browser command-line switches (e.g. --no-sandbox). */
+  /** More browser command-line switches, only those on ALLOWED_BROWSER_ARGS (e.g. --no-sandbox); others are BAD_OPTION. */
   browserArgs?: string[];
   /** "auto" (default): SwiftShader for a headless run on a Linux host without a display, else the host GPU. */
   gpu?: GpuMode;
@@ -216,6 +219,13 @@ export async function runWebglSmoke(o: WebglSmokeOptions): Promise<WebglSummary>
     if (!Number.isInteger(v) || v < 100 || v > 8192) throw bad(`${name} must be a whole number of CSS px from 100 to 8192 (got ${v}).`);
   }
   if (tapInput !== "mouse" && tapInput !== "touch") throw bad(`tapInput must be mouse or touch (got '${tapInput}').`);
+  const badArg = disallowedBrowserArg(o.browserArgs);
+  if (badArg !== null) {
+    throw bad(
+      `browser switch '${badArg}' is not allowed. Allowed: --no-sandbox, --disable-gpu, --disable-dev-shm-usage, --ignore-gpu-blocklist, ` +
+        "--enable-unsafe-swiftshader, --use-gl=<x>, --use-angle=<x>, --lang=<x>, --force-device-scale-factor=<n>, --enable-features=<list>, --disable-features=<list>.",
+    );
+  }
   const gpuMode = o.gpu ?? "auto";
   if (!["auto", "host", "swiftshader"].includes(gpuMode)) throw bad(`gpu must be auto, host or swiftshader (got '${gpuMode}').`);
   let ignore: RegExp | null = null;

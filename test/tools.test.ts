@@ -457,6 +457,17 @@ describe("emu_webgl_smoke", () => {
     const res = await call("emu_webgl_smoke", { build_dir: "x", ready_mode: "sometimes" });
     assert.equal(res.isError, true);
   });
+
+  test("no browser executable input; a switch that runs a program fails the job before anything starts", async () => {
+    const { tools } = await client.listTools();
+    const t = tools.find((x) => x.name === "emu_webgl_smoke")!;
+    const props = Object.keys((t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
+    assert.ok(!props.includes("browser"), "a tool call must not choose a program to run");
+    assert.ok(props.includes("browser_args"));
+    const res = await call("emu_webgl_smoke", { build_dir: tempLabHome(), browser_args: ["--gpu-launcher=calc.exe"], wait_sec: 30 });
+    assert.equal(res.isError, true);
+    assert.match(res.text, /BAD_OPTION: browser switch '--gpu-launcher=calc\.exe' is not allowed/);
+  });
 });
 
 describe("jobs", () => {

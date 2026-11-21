@@ -98,6 +98,30 @@ export function resolveGpu(mode: GpuMode, o: { headless: boolean; platform: Node
   return o.headless && o.platform === "linux" && noDisplay ? "swiftshader" : "host";
 }
 
+/**
+ * Extra browser switches a caller may add. Only these: Chromium has switches that run another program
+ * (--renderer-cmd-prefix, --gpu-launcher, ...) or undo what this test relies on (--user-data-dir, the DevTools port,
+ * --mute-audio), so a free-form list would let a tool call run any command or reach the person's profile.
+ */
+export const ALLOWED_BROWSER_ARGS: readonly RegExp[] = [
+  /^--no-sandbox$/,
+  /^--disable-gpu$/,
+  /^--disable-dev-shm-usage$/,
+  /^--ignore-gpu-blocklist$/,
+  /^--enable-unsafe-swiftshader$/,
+  /^--use-gl=[\w-]+$/,
+  /^--use-angle=[\w-]+$/,
+  /^--lang=[\w-]+$/,
+  /^--force-device-scale-factor=\d+(\.\d+)?$/,
+  /^--(enable|disable)-features=[\w,-]+$/,
+];
+
+/** The first switch not on ALLOWED_BROWSER_ARGS, or null when all are allowed. */
+export function disallowedBrowserArg(args: readonly string[] | undefined): string | null {
+  for (const a of args ?? []) if (!ALLOWED_BROWSER_ARGS.some((re) => re.test(a))) return a;
+  return null;
+}
+
 export interface BrowserArgsOptions {
   profileDir: string;
   width: number;

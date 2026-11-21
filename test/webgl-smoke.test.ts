@@ -56,6 +56,7 @@ describe("options are checked before anything starts", () => {
     await rejectsWith("BAD_OPTION", { width: 50 });
     await rejectsWith("BAD_OPTION", { tapInput: "pen" as never });
     await rejectsWith("BAD_OPTION", { gpu: "magic" as never });
+    await rejectsWith("BAD_OPTION", { browserArgs: ["--no-sandbox", "--renderer-cmd-prefix=calc.exe"] });
     await rejectsWith("NO_BROWSER", { browser: path.join(tempLabHome(), "no-such-browser.exe") });
   });
 });

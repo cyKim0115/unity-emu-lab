@@ -530,8 +530,12 @@ export function createServer(o: ServerOptions = {}): McpServer {
         width: z.number().int().min(100).max(8192).optional().describe("Viewport width in CSS px (default 1280)."),
         height: z.number().int().min(100).max(8192).optional().describe("Viewport height in CSS px (default 900)."),
         headless: z.boolean().optional().describe("Run the browser without a window (default false)."),
-        browser: z.string().min(1).optional().describe("Browser executable (default EMU_BROWSER, CHROME_PATH, then the usual Chrome, Edge and Chromium locations)."),
-        browser_args: z.array(z.string().min(1)).optional().describe('More browser switches, e.g. ["--no-sandbox"].'),
+        browser_args: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            'More browser switches, only from this list: --no-sandbox, --disable-gpu, --disable-dev-shm-usage, --ignore-gpu-blocklist, --enable-unsafe-swiftshader, --use-gl=<x>, --use-angle=<x>, --lang=<x>, --force-device-scale-factor=<n>, --enable-features=<list>, --disable-features=<list>. The browser itself is EMU_BROWSER / CHROME_PATH of the server, else the usual Chrome, Edge and Chromium locations.',
+          ),
         gpu: z.enum(["auto", "host", "swiftshader"]).optional().describe('"auto" (default): SwiftShader (software WebGL) for a headless run on a Linux host without a display, else the host GPU.'),
         no_isolation: z.boolean().optional().describe("Serve without COOP/COEP (a single-threaded build whose template loads cross-origin files without CORP/CORS, or to match a host such as GitHub Pages)."),
         keep_profile: z.boolean().optional().describe("Keep the throwaway browser profile in run_dir (tens of MB) for debugging."),
@@ -569,7 +573,6 @@ export function createServer(o: ServerOptions = {}): McpServer {
             width: a.width,
             height: a.height,
             headless: a.headless,
-            browser: a.browser,
             browserArgs: a.browser_args,
             gpu: a.gpu,
             noIsolation: a.no_isolation,
