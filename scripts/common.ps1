@@ -30,6 +30,10 @@ function Assert-PathArg([string]$Name, [string]$Value) {
     }
 }
 
+# A path ending in "\" would be quoted as "...\" and Windows reads \" as a literal quote, so the program would get
+# one argument holding the rest of the line. Trailing backslashes are doubled when quoting (for Start-Process lines).
+function Format-QuotedArg([string]$Value) { '"' + ($Value -replace '(\\+)$', '$1$1') + '"' }
+
 function ConvertTo-FullPath([string]$Path) {
     # Absolute path, relative to the PowerShell location ($PWD). Literal: [brackets] are not wildcards here.
     if (-not $Path) { return $Path }
@@ -454,14 +458,14 @@ function Get-UnityProcessesForProject([string]$ProjectPath) {
 }
 
 function Get-DefaultBuildOut([string]$ProjectPath, [string]$Target) {
-    # Build output when -Out is not given. The bundled sample keeps <sample>\Builds\Android\app.apk / Builds\WebGL.
-    # Any other project builds into this lab, outside the person's project and its git work tree:
-    # artifacts\builds\<folder>-<hash8>\Android\app.apk or ...\WebGL. <folder> is the project folder name with characters
-    # outside [A-Za-z0-9._-] replaced by '_'; <hash8> = first 8 hex chars of SHA256 over the UTF-8 bytes of the
-    # lowercased full path, so two projects with the same folder name do not share a folder.
-    if ($Target -notin 'Android', 'WebGL') { throw "Get-DefaultBuildOut: Target must be Android or WebGL, not '$Target'." }
+    # Build output when -Out is not given. The bundled sample keeps <sample>\Builds\Android\app.apk / Builds\WebGL /
+    # Builds\Windows\app.exe. Any other project builds into this lab, outside the person's project and its git work tree:
+    # artifacts\builds\<folder>-<hash8>\Android\app.apk, ...\WebGL or ...\Windows\app.exe. <folder> is the project folder
+    # name with characters outside [A-Za-z0-9._-] replaced by '_'; <hash8> = first 8 hex chars of SHA256 over the UTF-8
+    # bytes of the lowercased full path, so two projects with the same folder name do not share a folder.
+    if ($Target -notin 'Android', 'WebGL', 'Windows') { throw "Get-DefaultBuildOut: Target must be Android, WebGL or Windows, not '$Target'." }
     $full = Get-NormalizedPath $ProjectPath
-    $tail = if ($Target -eq 'WebGL') { 'WebGL' } else { 'Android\app.apk' }
+    $tail = @{ Android = 'Android\app.apk'; WebGL = 'WebGL'; Windows = 'Windows\app.exe' }[$Target]
     if ([string]::Equals($full, (Get-NormalizedPath $SampleRoot), [StringComparison]::OrdinalIgnoreCase)) {
         return [IO.Path]::Combine($full, 'Builds', $tail)
     }
@@ -471,6 +475,31 @@ function Get-DefaultBuildOut([string]$ProjectPath, [string]$Target) {
     try { $bytes = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($full.ToLowerInvariant())) } finally { $sha.Dispose() }
     $hash8 = -join ($bytes[0..3] | ForEach-Object { $_.ToString('x2') })
     return [IO.Path]::Combine($RepoRoot, 'artifacts', 'builds', "$leaf-$hash8", $tail)
+}
+
+function Get-WindowsDataDir([string]$Exe) {
+    # A Windows player <dir>\<name>.exe loads its content from <dir>\<name>_Data.
+    return [IO.Path]::Combine([IO.Path]::GetDirectoryName($Exe), [IO.Path]::GetFileNameWithoutExtension($Exe) + '_Data')
+}
+
+function Get-ProjectStandaloneBackend([string]$ProjectPath) {
+    # 'IL2CPP' or 'Mono': the Windows (Standalone) scripting backend in ProjectSettings.asset. A project that never
+    # changed it has no Standalone entry under scriptingBackend, which means Mono.
+    $ps = [IO.Path]::Combine($ProjectPath, 'ProjectSettings\ProjectSettings.asset')
+    if (-not [IO.File]::Exists($ps)) { return 'Mono' }
+    $m = [regex]::Match([IO.File]::ReadAllText($ps), 'scriptingBackend:\s*\r?\n(?:\s+\w+:\s*\d+\r?\n)*?\s+Standalone:\s*(\d+)')
+    if ($m.Success -and $m.Groups[1].Value -eq '1') { return 'IL2CPP' }
+    return 'Mono'
+}
+
+function Get-UnityWindowsMissing([string]$EditorPath, [string]$Backend = 'Mono') {
+    # Unity Hub modules a 64-bit Windows player build needs that this editor lacks; empty = complete. The Windows editor
+    # comes with the Mono player ("Windows Build Support (Mono)"); IL2CPP is the separate "Windows Build Support (IL2CPP)".
+    $v = [IO.Path]::Combine($EditorPath, 'Editor\Data\PlaybackEngines\WindowsStandaloneSupport\Variations')
+    $miss = @()
+    if (-not @(Find-PathPattern $v 'win64_*_mono').Count) { $miss += 'Windows Build Support (Mono)' }
+    if ($Backend -eq 'IL2CPP' -and -not @(Find-PathPattern $v 'win64_*_il2cpp').Count) { $miss += 'Windows Build Support (IL2CPP)' }
+    return $miss
 }
 
 function Test-Arm64Host {

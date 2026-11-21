@@ -10,10 +10,11 @@
 #   doctor.ps1 -Target Android                                  # machine + bundled sample
 #   doctor.ps1 -ProjectPath <unity project> -Target WebGL        # also the person's project
 #   doctor.ps1 -ProjectPath <p> -Target Android -NoSample        # skip the sample check
-# Pass only the target(s) the person uses: 'Both' (default) also requires the WebGL module.
+#   doctor.ps1 -ProjectPath <p> -Target Windows                  # Windows player (exe) on this desktop
+# Pass only the target(s) the person uses: 'Both' (default) = Android and WebGL, and also requires the WebGL module.
 param(
     [string]$ProjectPath,
-    [ValidateSet('Android', 'WebGL', 'Both')] [string]$Target = 'Both',
+    [ValidateSet('Android', 'WebGL', 'Windows', 'Both')] [string]$Target = 'Both',
     [switch]$NoSample
 )
 . "$PSScriptRoot\common.ps1"
@@ -26,8 +27,9 @@ function Add-Result([string]$Status, [string]$Key, [string]$Message) {
 }
 $wantAndroid = $Target -in 'Android', 'Both'
 $wantWebGL = $Target -in 'WebGL', 'Both'
+$wantWindows = $Target -eq 'Windows'
 $targetText = if ($Target -eq 'Both') { 'Android and WebGL' } else { $Target }
-$onlyOneHint = if ($Target -eq 'Both') { ' If you use only one platform, rerun with -Target Android or -Target WebGL.' } else { '' }
+$onlyOneHint = if ($Target -eq 'Both') { ' If you use only one platform, rerun with -Target Android, -Target WebGL or -Target Windows.' } else { '' }
 $moveHint = 'setup-android-sdk.ps1 -SdkRoot <dir> -AvdHome <dir> puts them elsewhere for this lab (saved in local.settings.json, used by every later command; the person picks the folders)'
 
 $script:externalNoted = @{}
@@ -44,8 +46,9 @@ function Add-ExternalToolsNote([string]$EditorPath, [string]$Version) {
     Add-Result 'WARN' 'external-tools' "Unity $Version lacks the bundled $($covered -join ', '), but Unity > Preferences > External Tools points at $($where -join '; '): accepted, builds use those (the setting is shared by every Unity version). Build errors about them are tool-version problems, not missing Hub modules."
 }
 
-function Get-ModuleGaps([string]$EditorPath, [string]$Version) {
-    # Modules this run needs that the editor lacks, as readable names.
+function Get-ModuleGaps([string]$EditorPath, [string]$Version, [string]$WindowsBackend = 'Mono') {
+    # Modules this run needs that the editor lacks, as readable names. $WindowsBackend: the project's Windows scripting
+    # backend (IL2CPP needs its own module).
     $pe = Join-Path $EditorPath 'Editor\Data\PlaybackEngines'
     $gaps = @()
     if ($wantAndroid) {
@@ -54,6 +57,7 @@ function Get-ModuleGaps([string]$EditorPath, [string]$Version) {
         Add-ExternalToolsNote $EditorPath $Version
     }
     if ($wantWebGL -and -not (Test-Path -LiteralPath (Join-Path $pe 'WebGLSupport'))) { $gaps += 'WebGL Build Support' }
+    if ($wantWindows) { $gaps += @(Get-UnityWindowsMissing $EditorPath $WindowsBackend) }
     return $gaps
 }
 
@@ -77,7 +81,8 @@ try {
     $redirect = Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -ErrorAction SilentlyContinue |
         Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "LocalCache\Local\$probe") } | Select-Object -First 1
     if ($redirect) {
-        Add-Result 'WARN' 'packaged-host' "this shell runs inside the packaged app '$($redirect.Name)': files it writes under %LOCALAPPDATA% / %APPDATA% go to that app's private folder and do not exist for other terminals. Keep installs outside AppData (the SDK default already is) and do the final check in a normal terminal."
+        $winNote = if ($wantWindows) { ' A Windows player started from here may also keep its PlayerPrefs (HKCU) and crash folders (%TEMP%) in that private copy.' } else { '' }
+        Add-Result 'WARN' 'packaged-host' "this shell runs inside the packaged app '$($redirect.Name)': files it writes under %LOCALAPPDATA% / %APPDATA% go to that app's private folder and do not exist for other terminals. Keep installs outside AppData (the SDK default already is) and do the final check in a normal terminal.$winNote"
     }
 } catch { } finally { Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA $probe) -ErrorAction SilentlyContinue }
 
@@ -133,7 +138,11 @@ if (-not $installs) {
         $android = if (-not (Test-Path -LiteralPath (Join-Path $pe 'AndroidPlayer'))) { 'no' } elseif ($miss) { "partial (missing $($miss -join ', '))" } elseif ($missB) { "yes via External Tools (bundled $($missB -join ', ') not installed)" } else { 'yes' }
         $jdk = if ($missB -notcontains 'OpenJDK') { Get-JdkMajor (Join-Path $pe 'AndroidPlayer\OpenJDK') } else { 0 }
         $webgl = Test-Path -LiteralPath (Join-Path $pe 'WebGLSupport')
-        Add-Result 'INFO' "unity $($i.Version)" "Android=$android$(if ($jdk) { " (JDK $jdk)" }) WebGL=$webgl ($($i.Path))"
+        $winParts = @()
+        if (-not @(Get-UnityWindowsMissing $i.Path 'Mono').Count) { $winParts += 'Mono' }
+        if (-not @(Get-UnityWindowsMissing $i.Path 'IL2CPP' | Where-Object { $_ -like '*IL2CPP*' }).Count) { $winParts += 'IL2CPP' }
+        $windows = if ($winParts) { $winParts -join '+' } else { 'no' }
+        Add-Result 'INFO' "unity $($i.Version)" "Android=$android$(if ($jdk) { " (JDK $jdk)" }) WebGL=$webgl Windows=$windows ($($i.Path))"
     }
     if ($wantAndroid -and -not ($installs | Where-Object { (Get-UnityAndroidMissing $_.Path).Count -eq 0 })) {
         Add-Result 'HUMAN' 'unity-android' 'no editor has complete "Android Build Support" (OpenJDK and Android SDK & NDK Tools). In Unity Hub > Installs > (version) > Add modules, check Android Build Support with both sub-modules.'
@@ -185,7 +194,8 @@ if ($ProjectPath) {
 
         $u = Get-UnityEditorForProject $ProjectPath
         Add-Result 'OK' 'project-unity' "$ProjectPath needs Unity $($u.Version): installed"
-        $gaps = @(Get-ModuleGaps $u.Path $u.Version)
+        $projectBackend = Get-ProjectStandaloneBackend $ProjectPath
+        $gaps = @(Get-ModuleGaps $u.Path $u.Version $projectBackend)
         if ($gaps) { Add-Result 'HUMAN' 'project-modules' "Unity $($u.Version) lacks $($gaps -join '; '). Add it in Unity Hub > Installs > $($u.Version) > Add modules.$onlyOneHint" }
 
         if (Test-ProjectLocked $ProjectPath) {
@@ -238,6 +248,10 @@ if ($ProjectPath) {
         }
         Add-Result 'INFO' 'project-platform' "a batchmode build for $($targetText -replace ' and ', '/') switches the project's active platform (stored in Library, not in git). The Editor then reopens on it; switching back may reimport."
 
+        if ($wantWindows) {
+            Add-Result 'INFO' 'project-windows' "Windows scripting backend: $projectBackend$(if ($projectBackend -eq 'IL2CPP') { ' (needs the IL2CPP module and Visual Studio C++, checked below)' })."
+            if ($projectBackend -eq 'IL2CPP') { $script:windowsIl2cpp = $true }
+        }
         if ($wantAndroid) {
             $ps = Join-Path $ProjectPath 'ProjectSettings\ProjectSettings.asset'
             if (Test-Path -LiteralPath $ps) {
@@ -253,6 +267,26 @@ if ($ProjectPath) {
         }
     } catch {
         Add-Result 'FAIL' 'project-unity' $_.Exception.Message
+    }
+}
+
+# --- Windows player: it runs on this desktop, windowed
+if ($wantWindows) {
+    $sid = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    if ($sid -eq 0) {
+        Add-Result 'FAIL' 'windows-desktop' 'this shell runs in session 0 (a service or a scheduled task without a desktop): the Windows smoke test cannot open a player window. Run it from a signed-in desktop session.'
+    } else {
+        Add-Result 'INFO' 'windows-desktop' "the Windows smoke test opens the player window on this desktop (session $sid). It does not click unless -Tap is given (then it takes the focus and moves the mouse for a moment). Sound: the build must be muted (EmuProjectBuild.BuildWindows turns on Disable Unity Audio for the test build and says so in its build log); otherwise the run stops unless the person allows sound (-AllowAudio)."
+    }
+    if ($script:windowsIl2cpp) {
+        # IL2CPP turns C# into C++ and compiles it with MSVC: Visual Studio (or its Build Tools) with the C++ workload.
+        $vswhere = [IO.Path]::Combine(${env:ProgramFiles(x86)}, 'Microsoft Visual Studio\Installer\vswhere.exe')
+        $vc = $null
+        if (Test-Path -LiteralPath $vswhere) {
+            $vc = @(& $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null) | Select-Object -First 1
+        }
+        if ($vc) { Add-Result 'OK' 'windows-il2cpp-cpp' "Visual Studio C++ tools: $vc" }
+        else { Add-Result 'HUMAN' 'windows-il2cpp-cpp' 'the project builds Windows with IL2CPP, which needs Visual Studio 2019 or newer (or its Build Tools) with "Desktop development with C++" (MSVC and a Windows SDK). Ask the person to install it with the Visual Studio Installer.' }
     }
 }
 
