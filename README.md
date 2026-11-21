@@ -173,7 +173,7 @@ npm run typecheck
 
 `.ps1`을 고쳤으면 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-scripts.ps1`(ASCII·PowerShell 5.1 구문 검사)도 돌린다.
 
-npm 패키지에는 `bin/`과 컴파일된 `dist/`만 들어간다(`npm publish`가 `prepack`에서 빌드). 배포 절차: `CHANGELOG.md`에 버전·날짜 → `npm version <patch|minor|major>` → `npm publish`(2FA) → `npm view unity-emu-lab version`으로 확인한 뒤 `git push --follow-tags`.
+npm 패키지에는 `bin/`과 컴파일된 `dist/`만 들어간다(`npm publish`가 `prepack`에서 빌드). 배포 절차: `CHANGELOG.md`에 버전·날짜 → `npm version <patch|minor|major>`(`server.json`의 버전도 같이 올린다) → `npm publish`(2FA) → `npm view unity-emu-lab version`으로 확인한 뒤 `git push --follow-tags` → MCP 레지스트리: `mcp-publisher login github` → `mcp-publisher publish`(이름 `io.github.cyKim0115/unity-emu-lab`은 `package.json`의 `mcpName`과 같아야 하고, 한 번 올린 버전은 다시 올리지 못한다).
 
 ## PowerShell 스크립트 (Windows)
 

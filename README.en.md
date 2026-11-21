@@ -138,7 +138,7 @@ npm run typecheck
 
 After changing a `.ps1`, also run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check-scripts.ps1` (ASCII and Windows PowerShell 5.1 parser check).
 
-The npm package contains only `bin/` and the compiled `dist/` (`prepack` builds it). Release: CHANGELOG entry → `npm version <level>` → `npm publish` (2FA) → `npm view unity-emu-lab version` → `git push --follow-tags`.
+The npm package contains only `bin/` and the compiled `dist/` (`prepack` builds it). Release: CHANGELOG entry → `npm version <level>` (also bumps `server.json`) → `npm publish` (2FA) → `npm view unity-emu-lab version` → `git push --follow-tags` → MCP Registry: `mcp-publisher login github` → `mcp-publisher publish` (the name `io.github.cyKim0115/unity-emu-lab` must equal `mcpName` in `package.json`; a published version cannot be published again).
 
 ## License
 
