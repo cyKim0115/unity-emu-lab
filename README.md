@@ -225,7 +225,17 @@ Python·Node·Playwright 없이 PowerShell 5.1만으로 돈다.
 | `sample/EmuSmoke` | 검증용 Unity 6.6 프로젝트(Mobile Notifications 2.5.0, OnGUI, `SMOKE_*` 로그 마커. Windows 플레이어는 `-emuSmokeFault crash\|exception\|quit`로 일부러 실패) |
 | `scripts/project-guard.ps1` | 사용자 프로젝트 빌드 전후 보호: `Snapshot`(첫 빌드 전 한 번. 작업 중 변경 기록, 추적 파일만 패치 백업) → `Report`(빌드가 바꾼 것) → 동의 후 `Revert`(Report에 있던 빌드 변경만 되돌리고 새 파일은 백업으로 이동, 남길 파일은 `-Keep`). 두 번째 Snapshot은 그사이 변경이 있으면 `-Replace` 없이 멈추고, Unity가 프로젝트를 잡고 있거나 Report 뒤 내용·커밋이 바뀌면 Report·Revert가 멈춘다. Revert 뒤 기록은 보관 처리. 한글·공백·대괄호 경로, 하위 폴더 프로젝트 지원 |
 | `templates/EmuProjectBuild.cs`, `templates/EmuLab.Editor.asmdef` | 빌드 메서드가 없는 사용자 프로젝트용 batchmode 빌드 진입점(Unity 2021.2+). 동의 후 두 파일을 **새 폴더** `Assets/EmuLab/Editor/`에 복사, 커밋하지 않음. 켜진 씬을 현재 설정으로 빌드하고, 그 빌드 동안만 AAB·Export Project·ABI별 분할을 끄고 되돌린다. 키스토어 암호가 없으면 디버그 서명. Mono 프로젝트는 `-EmuArm64`로 그 빌드만 IL2CPP + ARM64. `BuildWindows`는 그 빌드 동안만 Disable Unity Audio·Run In Background·Use Player Log를 켜고 되돌린다 |
-| `.mcp.json`, `.cursor/mcp.json` | 에이전트용 `mobile-mcp`(1.0.12): 스크린샷·탭·스와이프·요소 목록·앱 설치. Codex는 전역 설정이라 사용자 승인 후 추가(`AGENTS.md`) |
+| `.mcp.json`, `.cursor/mcp.json` | 에이전트용 `mobile-mcp`(1.0.12): 스크린샷·탭·스와이프·요소 목록·앱 설치. Codex는 전역 설정이라 사용자 승인 후 추가(아래 조각, `AGENTS.md` 「mobile-mcp」) |
+
+Codex에서 mobile-mcp를 쓸 때 `~/.codex/config.toml` 끝에 붙이는 조각이다. 모든 Codex 세션에 적용되므로 사용자 승인 뒤에만 넣는다. `<USERPROFILE>`은 실제 경로로 바꾼다.
+
+```toml
+[mcp_servers.mobile-mcp]
+command = "cmd"
+args = ["/c", "npx", "-y", "@mobilenext/mobile-mcp@1.0.12"]
+env = { ANDROID_HOME = "<USERPROFILE>\\Android\\Sdk" }
+startup_timeout_sec = 120
+```
 
 Unity 에디터는 `UNITY_EDITOR_ROOT`, Unity Hub 설치 위치(Preferences > Installs), 기본 위치(`C:\Program Files\Unity\Hub\Editor`), Hub에 「Locate」로 추가한 에디터 순으로 찾는다. 같은 버전이 두 곳에 있으면 앞의 것을 쓴다.
 Android SDK는 `ANDROID_SDK_ROOT` → `local.settings.json`의 `sdkRoot` → `%USERPROFILE%\Android\Sdk`, AVD는 `ANDROID_AVD_HOME` → `avdHome` → `%USERPROFILE%\.android\avd` 순이다.

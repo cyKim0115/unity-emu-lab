@@ -3,8 +3,7 @@
 이 저장소를 받은 AI의 일: 사용자 PC에 「Unity 빌드 → 실행 → 자체 테스트」 환경을 갖추고, 사용자의 Unity 프로젝트에 붙여 실제로 돌린 뒤 결과를 보고한다.
 대상은 Android(에뮬레이터, 앱 밖 알림창까지), WebGL(로컬 서버 + 브라우저), Windows Standalone(이 PC 바탕화면에서 exe 실행)이다. Windows 10/11(x64) + Windows PowerShell 5.1 기준이다.
 
-**받을 위치**: 사용자 Unity 프로젝트 폴더와 그 git 저장소 **밖**에 클론한다(예: `git clone <url> %USERPROFILE%\unity-emu-lab`). 프로젝트나 `Assets\` 안에 받지 않는다.
-그 안에 받으면 이 저장소 파일이 사용자 변경으로 잡히고 빌드 출력이 프로젝트에 쌓인다. 모든 명령은 그 클론에서 실행한다. `doctor.ps1 -ProjectPath`가 `[FAIL] lab-location`으로 막는다.
+**받을 위치**: 사용자 Unity 프로젝트 폴더와 그 git 저장소 **밖**에 클론한다(예: `git clone <url> %USERPROFILE%\unity-emu-lab`). 프로젝트나 `Assets\` 안에 받지 않는다. 그 안에 받으면 이 저장소 파일이 사용자 변경으로 잡히고 빌드 출력이 프로젝트에 쌓인다. 모든 명령은 그 클론에서 실행한다. `doctor.ps1 -ProjectPath`가 `[FAIL] lab-location`으로 막는다.
 
 `private/AGENTS.md`가 있으면(개인 덧붙임, 공개 저장소에서는 git이 무시한다) 그것도 읽고 따른다.
 
@@ -13,8 +12,7 @@
 1. **Android SDK 라이선스는 사용자가 동의한다.** `setup-android-sdk.ps1 -AcceptLicenses`는 사용자에게 먼저 묻고 「예」를 받은 뒤에만 실행한다.
    물을 내용: Android SDK 라이선스 동의, dl.google.com에서 약 1.5GB를 받아 SDK 폴더에 약 4.5GB, AVD 폴더에 최대 약 10GB(합계 약 15GB) 사용,
    두 위치(`doctor.ps1`의 `[INFO] android-paths` 줄. 기본 `%USERPROFILE%\Android\Sdk`, `%USERPROFILE%\.android\avd`).
-   다른 위치를 원하면 `setup-android-sdk.ps1 -AcceptLicenses -SdkRoot <폴더> -AvdHome <폴더>`로 설치한다. 이 저장소 안 `local.settings.json`(커밋 안 됨)에 남아 이후 모든 명령이 그 위치를 쓴다. 전역 환경 변수는 바꾸지 않는다.
-   환경 변수 `ANDROID_SDK_ROOT`·`ANDROID_AVD_HOME`이 있으면 그 값이 이긴다(`ANDROID_HOME`은 무시한다. Android Studio SDK를 건드리지 않으려고). 위치를 처음으로 돌리려면 `local.settings.json`을 지운다.
+   다른 위치를 원하면 `setup-android-sdk.ps1 -AcceptLicenses -SdkRoot <폴더> -AvdHome <폴더>`로 설치한다. 이 저장소 안 `local.settings.json`(커밋 안 됨)에 남아 이후 모든 명령이 그 위치를 쓴다. 전역 환경 변수는 바꾸지 않는다. 환경 변수 `ANDROID_SDK_ROOT`·`ANDROID_AVD_HOME`이 있으면 그 값이 이긴다(`ANDROID_HOME`은 무시한다. Android Studio SDK를 건드리지 않으려고). 위치를 처음으로 돌리려면 `local.settings.json`을 지운다.
 2. **시스템 설정은 바꾸지 않는다.** BIOS 가상화, Windows 기능 「Windows 하이퍼바이저 플랫폼」, 관리자 권한 작업, 재부팅은 `doctor.ps1`의 `[HUMAN]` 줄을 그대로 사용자에게 안내하고 기다린다.
 3. **Unity Hub 에디터·모듈 설치는 사용자가 한다.** Android/WebGL/Windows(IL2CPP) Build Support 같은 모듈과 Visual Studio C++ 도구는 수 GB라 대신 받지 않는다.
 4. **소리는 끈 채로 둔다.** 에뮬레이터 `-no-audio`, 브라우저 `--mute-audio` 기본값을 바꾸지 않는다. 사용자가 그 요청에서 직접 원할 때만 예외다. Windows 플레이어는 소리를 끈 테스트 빌드(템플릿 `BuildWindows`)로만 띄운다. 그렇지 않은 빌드는 사용자가 소리를 허락할 때만 `-AllowAudio`(아래 「Windows 판정」). 시스템 음량·음소거·볼륨 믹서는 바꾸지 않는다.
@@ -161,18 +159,9 @@ APK나 WebGL 빌드 폴더가 이미 있을 때는 PowerShell 대신 npm 패키�
 - 기기 ID는 `emulator-5554`가 아니라 AVD 이름 `unity-test`다. Unity 화면 안은 요소 목록이 없어 스크린샷과 좌표로 다룬다.
 - Claude Code: 저장소의 `.mcp.json`. 사용자가 `claude`를 실행할 때 프로젝트 MCP를 승인해야 붙는다(대신 승인하지 않는다).
 - Cursor: `.cursor/mcp.json`.
-- Codex: 이 저장소에는 Codex용 프로젝트 설정이 없어 사용자 전역 `~/.codex/config.toml`에 넣어야 한다. 넣으면 이 저장소와 무관한 모든 Codex 세션이 시작할 때 mobile-mcp를 띄운다. 그래서 규칙 12대로 사용자가 원할 때만, 아래 조각과 이 영향을 보여 주고 「예」를 받은 뒤 넣는다.
+- Codex: 이 저장소에는 Codex용 프로젝트 설정이 없어 사용자 전역 `~/.codex/config.toml`에 넣어야 한다. 넣으면 이 저장소와 무관한 모든 Codex 세션이 시작할 때 mobile-mcp를 띄운다. 그래서 규칙 12대로 사용자가 원할 때만, README 「구성」의 Codex용 TOML 조각과 이 영향을 보여 주고 「예」를 받은 뒤 넣는다.
   넣기 전에 `[mcp_servers.mobile-mcp]`가 이미 있는지 확인한다(같은 표가 두 번 있으면 파일을 못 읽는다). 블록은 파일 끝, 최상위 키들 뒤에 붙인다. `<USERPROFILE>`은 `%USERPROFILE%`의 실제 절대 경로로 바꿔 보여 준다(TOML 문자열이라 `\`는 `\\`로 쓴다).
   Codex는 MCP를 세션 시작 때 읽으므로 추가한 뒤 새 세션을 열어야 붙는다. 첫 실행 때 npx가 패키지를 받느라 기본 대기 10초를 넘길 수 있어 `startup_timeout_sec = 120`으로 둔다. 다 쓰면 이 블록을 지우면 된다고 함께 알린다.
-
-  ```toml
-  [mcp_servers.mobile-mcp]
-  command = "cmd"
-  args = ["/c", "npx", "-y", "@mobilenext/mobile-mcp@1.0.12"]
-  env = { ANDROID_HOME = "<USERPROFILE>\\Android\\Sdk" }
-  startup_timeout_sec = 120
-  ```
-
 - SDK가 기본 위치가 아니면(`doctor.ps1`에 `mobile-mcp-sdk` WARN) 세 설정의 `ANDROID_HOME`을 그 경로로 바꾼다. 이 PC 전용 변경이라 커밋하지 않는다. mobile-mcp는 `ANDROID_HOME\platform-tools\adb`가 없으면 기기를 하나도 못 찾는다.
 
 ## 막혔을 때
