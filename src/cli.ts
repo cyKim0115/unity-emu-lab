@@ -15,6 +15,9 @@ import { runSmoke } from "./smoke.ts";
 import type { Report } from "./types.ts";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
 import { runWebglSmoke } from "./webgl/smoke.ts";
+import { buildUnity, type WebglCompression } from "./build.ts";
+import { installTemplate } from "./template.ts";
+import { BUILD_TARGETS, type BuildTarget } from "./unity.ts";
 
 export interface CliIo {
   out: (line: string) => void;
@@ -50,7 +53,7 @@ function installSignalHandlers(err: (line: string) => void): () => void {
 }
 
 export const USAGE = `${PACKAGE_NAME} ${PACKAGE_VERSION}: self-test Unity Android builds on a local emulator, shared by several sessions through a lease,
-and Unity WebGL builds in a local browser.
+and Unity WebGL builds in a local browser; build Unity players in batchmode.
 
 Usage: emu-lab <command> [options]
 
@@ -85,6 +88,11 @@ Commands:
       --no-tap --no-tap-check --tap-input <mouse|touch> --width <px> --height <px> --headless --browser <exe>
       --browser-arg=<switch> (repeatable) --gpu <auto|host|swiftshader> --no-isolation --keep-profile
       --fail-on-console-error --ignore-error <regex> --fail-on-blank --out <dir>
+  build <project>            Build a Unity player in batchmode (Android APK, WebGL folder or Windows exe)
+      --target <android|webgl|windows>  --method <Class.Method> | --build-profile <asset path>
+      --out <path> (default <lab home>/builds/<folder>-<hash8>/...) --release --webgl-compression <brotli|gzip|disabled>
+      --emu-arm64 --extra-arg=<arg> (repeatable) --timeout-minutes <n> (default 40)
+  template <project>         Copy the build entry (EmuProjectBuild) into a new Assets/EmuLab/Editor/ (after the person agrees)
   serve                     Run the MCP server on stdio (also: no command with stdin not a terminal)
   help                       This text
   version                    Print the version (-v, --version)
@@ -154,6 +162,14 @@ const OPTIONS = {
   "fail-on-console-error": { type: "boolean" },
   "ignore-error": { type: "string" },
   "fail-on-blank": { type: "boolean" },
+  target: { type: "string" },
+  method: { type: "string" },
+  "build-profile": { type: "string" },
+  release: { type: "boolean" },
+  "webgl-compression": { type: "string" },
+  "emu-arm64": { type: "boolean" },
+  "extra-arg": { type: "string", multiple: true },
+  "timeout-minutes": { type: "string" },
 } as const;
 
 type OptionName = keyof typeof OPTIONS;
@@ -220,6 +236,8 @@ const COMMAND_OPTIONS: Record<string, OptionName[]> = {
     "fail-on-blank",
     "out",
   ],
+  build: ["target", "method", "build-profile", "out", "release", "webgl-compression", "emu-arm64", "extra-arg", "timeout-minutes"],
+  template: [],
   serve: [],
   help: [],
   version: [],
@@ -236,6 +254,8 @@ const POSITIONALS: Record<string, [number, number]> = {
   clock: [1, 2],
   screenshot: [0, 1],
   webgl: [1, 1],
+  build: [1, 1],
+  template: [1, 1],
   serve: [0, 0],
   help: [0, 0],
   version: [0, 0],
@@ -345,7 +365,15 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
   const [minPos, maxPos] = POSITIONALS[command];
   if (args.length < minPos || args.length > maxPos) {
     const what =
-      command === "smoke" ? "smoke <apk>" : command === "webgl" ? "webgl <build-dir>" : command === "clock" ? "clock forward <minutes> | clock reset" : command;
+      command === "smoke"
+        ? "smoke <apk>"
+        : command === "webgl"
+          ? "webgl <build-dir>"
+          : command === "build" || command === "template"
+            ? `${command} <project>`
+            : command === "clock"
+              ? "clock forward <minutes> | clock reset"
+              : command;
     io.err(`USAGE: ${what}: wrong number of arguments (${args.join(" ") || "none"}). Run emu-lab help.`);
     return 2;
   }
@@ -539,6 +567,33 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
         if (!summary.pass) code = 1;
         break;
       }
+      case "build": {
+        const t = values.target;
+        const target = BUILD_TARGETS.find((x) => x.toLowerCase() === (t ?? "").toLowerCase());
+        if (!target) throw new UsageError(`build needs --target android, webgl or windows (got '${t ?? "none"}').`);
+        const comp = values["webgl-compression"];
+        if (comp !== undefined && !["brotli", "gzip", "disabled"].includes(comp)) {
+          throw new UsageError(`--webgl-compression must be brotli, gzip or disabled (got '${comp}').`);
+        }
+        result = await buildUnity({
+          projectPath: path.resolve(args[0]),
+          target: target as BuildTarget,
+          method: values.method,
+          buildProfile: values["build-profile"],
+          out: values.out ? path.resolve(values.out) : undefined,
+          release: values.release,
+          webglCompression: comp as WebglCompression | undefined,
+          emuArm64: values["emu-arm64"],
+          extraArgs: values["extra-arg"],
+          timeoutMinutes: num(values, "timeout-minutes"),
+          env,
+          report,
+        });
+        break;
+      }
+      case "template":
+        result = installTemplate({ projectPath: path.resolve(args[0]), report });
+        break;
       default:
         io.err(`USAGE: unknown command '${command}'.`);
         return 2;

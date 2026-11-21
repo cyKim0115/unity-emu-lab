@@ -4,7 +4,8 @@
 
 import { after, afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { resolveLocations } from "../src/config.ts";
@@ -159,10 +160,12 @@ const HINTS: Record<string, Hints> = {
   emu_screenshot: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   emu_job: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   emu_webgl_smoke: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  emu_build: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  emu_build_template: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 
 describe("tool list", () => {
-  test("all 10 tools, each with all four hints matching the spec", async () => {
+  test("all 12 tools, each with all four hints matching the spec", async () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), Object.keys(HINTS).sort());
     for (const t of tools) {
@@ -184,11 +187,14 @@ describe("tool list", () => {
     for (const name of ["emu_start", "emu_smoke", "emu_check_notification", "emu_clock", "emu_status"]) {
       assert.match(byName.get(name)!, /BUSY/, name);
     }
-    for (const name of ["emu_start", "emu_smoke", "emu_check_notification", "emu_release", "emu_webgl_smoke"]) {
+    for (const name of ["emu_start", "emu_smoke", "emu_check_notification", "emu_release", "emu_webgl_smoke", "emu_build"]) {
       assert.match(byName.get(name)!, /job_id/, name);
       assert.match(byName.get(name)!, /emu_job/, name);
     }
     assert.match(byName.get("emu_job")!, /emu_webgl_smoke/);
+    assert.match(byName.get("emu_job")!, /emu_build/);
+    assert.match(byName.get("emu_build")!, /PROJECT_OPEN/);
+    assert.match(byName.get("emu_build_template")!, /agreed/);
     assert.match(byName.get("emu_job")!, /JOB_UNKNOWN/);
   });
 
@@ -467,6 +473,27 @@ describe("emu_webgl_smoke", () => {
     const res = await call("emu_webgl_smoke", { build_dir: tempLabHome(), browser_args: ["--gpu-launcher=calc.exe"], wait_sec: 30 });
     assert.equal(res.isError, true);
     assert.match(res.text, /BAD_OPTION: browser switch '--gpu-launcher=calc\.exe' is not allowed/);
+  });
+});
+
+describe("emu_build and emu_build_template", () => {
+  test("emu_build: a folder that is not a Unity project fails the job with NO_PROJECT; no method is BAD_OPTION", async () => {
+    const res = await call("emu_build", { project_path: tempLabHome(), target: "Android", method: "A.B", wait_sec: 30 });
+    assert.equal(res.isError, true);
+    assert.match(res.text, /NO_PROJECT: Not a Unity project/);
+    const res2 = await call("emu_build", { project_path: tempLabHome(), target: "WebGL", wait_sec: 30 });
+    assert.equal(res2.isError, true);
+    assert.match(res2.text, /BAD_OPTION: Pass a build method/);
+  });
+
+  test("emu_build_template copies the build entry into Assets/EmuLab/Editor", async () => {
+    const p = tempLabHome();
+    mkdirSync(path.join(p, "ProjectSettings"));
+    writeFileSync(path.join(p, "ProjectSettings", "ProjectVersion.txt"), "m_EditorVersion: 6000.6.0f1\n");
+    const res = await call("emu_build_template", { project_path: p });
+    assert.notEqual(res.isError, true, res.text);
+    assert.ok(existsSync(path.join(p, "Assets", "EmuLab", "Editor", "EmuProjectBuild.cs")));
+    assert.match(res.text, /EmuProjectBuild\.BuildApk/);
   });
 });
 

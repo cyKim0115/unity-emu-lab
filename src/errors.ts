@@ -25,7 +25,15 @@ export type EmuErrorCode =
   | "JOB_UNKNOWN" // emu_job with an unknown job id
   | "JOB_RUNNING" // a device-changing job already runs on this AVD in this server process
   | "NO_BUILD" // WebGL: the build folder has no index.html
-  | "NO_BROWSER"; // WebGL: no Chrome, Edge or Chromium found (or the given one does not exist)
+  | "NO_BROWSER" // WebGL: no Chrome, Edge or Chromium found (or the given one does not exist)
+  | "NO_PROJECT" // not a Unity project folder (no ProjectSettings/ProjectVersion.txt)
+  | "NO_UNITY" // the editor version the project needs is not installed
+  | "PROJECT_OPEN" // a Unity Editor has the project open: batchmode builds and the guard Report/Revert wait
+  | "BUILD_RUNNING" // a batchmode Unity is building the project (a leftover or another run)
+  | "BUILD_FAILED" // Unity failed, or exited 0 while its log reports a failed build
+  | "BUILD_TIMEOUT" // Unity ran longer than the timeout and was stopped
+  | "BUILD_NO_OUTPUT" // Unity exited 0 but this build wrote nothing at the output
+  | "TEMPLATE_EXISTS"; // Assets/EmuLab is already in the project
 
 export class EmuError extends Error {
   readonly code: EmuErrorCode;

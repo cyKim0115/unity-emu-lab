@@ -27,6 +27,8 @@ import type { Report } from "./types.ts";
 import { PACKAGE_NAME, PACKAGE_VERSION } from "./version.ts";
 import { killLiveBrowsers } from "./webgl/browser.ts";
 import { runWebglSmoke } from "./webgl/smoke.ts";
+import { buildUnity, DEFAULT_TIMEOUT_MINUTES, stopLiveBuilds } from "./build.ts";
+import { installTemplate } from "./template.ts";
 
 export type AdbFactory = (loc: Locations, env: NodeJS.ProcessEnv) => Adb;
 
@@ -63,6 +65,7 @@ const INSTRUCTIONS = `Self-test Unity Android builds on a local Android emulator
 - emu_clock forward moves the device clock for long-delay notifications; always call emu_clock reset afterwards (if this server stops first, it puts the clock back itself).
 - Do not drive the device with mobile-mcp (or anything else using UiAutomation) while emu_smoke or emu_check_notification runs: they need UiAutomation for the notification shade and system dialogs.
 - Device audio stays off. emu_status and emu_screenshot change nothing and work without a lease.
+- emu_build builds the person's Unity project in batchmode (Android APK, WebGL folder, Windows exe) with its own build method or a Unity 6 build profile; it runs as a job. It refuses while the project is open in a Unity Editor. Never commit what the build changed in the project. A project without a build method gets the lab's build entry with emu_build_template, only after the person agrees.
 - emu_webgl_smoke tests a Unity WebGL build folder in a local headless or windowed Chrome/Edge/Chromium (throwaway profile, audio muted). It needs no emulator and no lease, and also runs as a job (emu_job). For a build that is not the bundled sample set ready_mode (loaded for Unity's Default template) or ready_marker, and no_tap or tap_marker.`;
 
 // ---------------------------------------------------------------------------------------------------
@@ -592,11 +595,72 @@ export function createServer(o: ServerOptions = {}): McpServer {
   );
 
   server.registerTool(
+    "emu_build",
+    {
+      title: "Build a Unity player",
+      description:
+        "Build the person's Unity project in batchmode on this PC (Windows, macOS or Linux): an Android APK, a WebGL folder or a Windows exe, with the project's own build method (method, gets -buildOut <out>) or a Unity 6 build profile (build_profile). If the project has neither, ask the person first and add the template with emu_build_template (method EmuProjectBuild.BuildApk / BuildWebGL / BuildWindows). The build switches the project's active platform (stored in Library, not in git) and can change ProjectSettings or assets: never commit those changes. It refuses while the project is open in a Unity Editor (PROJECT_OPEN: ask the person to close it) or another batchmode Unity builds it (BUILD_RUNNING). BUILD_OK means this build wrote the output; report every EMU_BUILD_WARN / EMU_BUILD_NOTE line of the result. Runs as a job (can take 3-40 minutes): if the result is a job_id, call emu_job with it and do not start another build of the same project meanwhile. Then test the output with emu_smoke (apk) or emu_webgl_smoke (folder).",
+      inputSchema: {
+        project_path: z.string().min(1).describe("The Unity project folder (holds Assets/ and ProjectSettings/)."),
+        target: z.enum(["Android", "WebGL", "Windows"]).describe("What to build."),
+        method: z.string().min(1).optional().describe("Static editor method, e.g. MyBuild.BuildAndroid (gets -buildOut <out>, and -apkOut <out> for Android; must write there and exit non-zero on failure)."),
+        build_profile: z.string().min(1).optional().describe('Unity 6 build profile asset instead of a method, e.g. "Assets/Settings/Build Profiles/Web.asset".'),
+        out: z.string().min(1).optional().describe("Output: Android an .apk file, WebGL a folder, Windows an .exe file (absolute path). Default: <lab home>/builds/<project folder>-<hash8>/..., outside the project."),
+        release: z.boolean().optional().describe("Pass -release to the method (EmuProjectBuild: no Development build)."),
+        webgl_compression: z.enum(["brotli", "gzip", "disabled"]).optional().describe("WebGL: passed to the method as -webglCompression."),
+        emu_arm64: z.boolean().optional().describe("Android + method: pass -emuArm64 (EmuProjectBuild builds IL2CPP + ARM64 for this build only, for the x86_64 emulator). Only after the person agrees; report that the tested binary differs from the release build."),
+        extra_args: z.array(z.string()).optional().describe("More arguments for the method (paths absolute: Unity resolves relative ones against the project)."),
+        timeout_minutes: z.number().positive().max(600).optional().describe(`Stop Unity after this long (default ${DEFAULT_TIMEOUT_MINUTES}; a first IL2CPP build of a big project may need 90).`),
+        wait_sec: waitSecSchema,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (a) => {
+      let id: string;
+      try {
+        id = jobs.startJob("build", (report) =>
+          buildUnity({
+            projectPath: a.project_path,
+            target: a.target,
+            method: a.method,
+            buildProfile: a.build_profile,
+            out: a.out,
+            release: a.release,
+            webglCompression: a.webgl_compression,
+            emuArm64: a.emu_arm64,
+            extraArgs: a.extra_args,
+            timeoutMinutes: a.timeout_minutes,
+            env: env(),
+            report,
+          }),
+        );
+      } catch (err) {
+        return fail(err, []);
+      }
+      return jobResult(await jobs.waitJob(id, a.wait_sec ?? DEFAULT_WAIT_SEC));
+    },
+  );
+
+  server.registerTool(
+    "emu_build_template",
+    {
+      title: "Add the build entry to a project",
+      description:
+        "Only after the person agreed: copy the lab's batchmode build entry (EmuProjectBuild.cs + EmuLab.Editor.asmdef, Unity 2021.2+) into a NEW folder Assets/EmuLab/Editor/ of a project that has no build method or build profile. Then build with emu_build method EmuProjectBuild.BuildApk, EmuProjectBuild.BuildWebGL or EmuProjectBuild.BuildWindows: it builds the scenes enabled in Build Settings with the current settings and restores the few settings it changes for the test build. Never commit Assets/EmuLab. Refuses (TEMPLATE_EXISTS) when Assets/EmuLab already holds something else.",
+      inputSchema: {
+        project_path: z.string().min(1).describe("The Unity project folder."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (a) => guard(async (report) => installTemplate({ projectPath: a.project_path, report })),
+  );
+
+  server.registerTool(
     "emu_job",
     {
       title: "Wait for a job",
       description:
-        "Wait for a job started by emu_start, emu_smoke, emu_check_notification, emu_release or emu_webgl_smoke (job_id from their result) and return its result once it finished, or its status and latest report lines while it still runs (then call emu_job again). Without job_id it lists this server's jobs. JOB_UNKNOWN means the id is not known to this server (jobs do not survive a server restart): list the jobs or check emu_status.",
+        "Wait for a job started by emu_start, emu_smoke, emu_check_notification, emu_release, emu_webgl_smoke or emu_build (job_id from their result) and return its result once it finished, or its status and latest report lines while it still runs (then call emu_job again). Without job_id it lists this server's jobs. JOB_UNKNOWN means the id is not known to this server (jobs do not survive a server restart): list the jobs or check emu_status.",
       inputSchema: {
         job_id: z.string().min(1).optional().describe("The job_id to wait for; omit to list the jobs."),
         wait_sec: z.number().int().min(0).max(JOB_MAX_WAIT_SEC).optional().describe("How long to wait for the job to finish (default 50, max 600)."),
@@ -651,6 +715,9 @@ export function makeShutdown(o: {
       // A WebGL smoke's browser would outlive us (its finally block never runs once the process exits).
       const browsers = killLiveBrowsers();
       if (browsers) o.log(`${PACKAGE_NAME}: stopped ${browsers} browser(s) of a running WebGL smoke test.`);
+      // A hidden Unity build would keep building and holding the project (its watchdog would stop it later anyway).
+      const builds = await stopLiveBuilds();
+      if (builds) o.log(`${PACKAGE_NAME}: stopped ${builds} running Unity build(s); run the guard Report for their projects.`);
       if (movedClockSerials().length) {
         await resetMovedClocks((line) => o.log(`${PACKAGE_NAME}: ${line}`), { timeoutMs: o.clockResetMs ?? SHUTDOWN_CLOCK_RESET_MS });
       }

@@ -36,6 +36,7 @@
   "files": [
     "bin/",
     "dist/",
+    "templates/",
     "CHANGELOG.md"
   ],
   "scripts": {

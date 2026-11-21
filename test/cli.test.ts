@@ -116,6 +116,16 @@ describe("usage errors exit 2", () => {
       ["webgl", "dir", "--width", "wide"],
       ["webgl", "dir", "--notif-delay", "0"],
       ["smoke", "app.apk", "--browser", "chrome"],
+      ["build"],
+      ["build", "proj"],
+      ["build", "proj", "--target", "ios", "--method", "A.B"],
+      ["build", "proj", "--target", "android", "--webgl-compression", "zip", "--method", "A.B"],
+      ["build", "proj", "--target", "android"],
+      ["build", "proj", "--target", "webgl", "--method", "A.B", "--build-profile", "x.asset"],
+      ["build", "proj", "--target", "webgl", "--method", "A.B", "--hours", "1"],
+      ["build", "proj", "--target", "webgl", "--method", "A.B", "--timeout-minutes", "soon"],
+      ["template"],
+      ["template", "a", "b"],
     ];
     for (const args of cases) {
       const r = await run(args);
@@ -132,6 +142,18 @@ describe("webgl", () => {
     assert.equal(r.code, 1, r.stdout + r.stderr);
     assert.match(r.stderr, /^NO_BUILD: No index\.html in /);
     assert.equal(r.stdout, "");
+  });
+});
+
+describe("build and template", () => {
+  test("a folder that is not a Unity project: NO_PROJECT, exit 1", async () => {
+    const dir = tempLabHome();
+    const r = await run(["build", dir, "--target", "android", "--method", "A.B"]);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /^NO_PROJECT: Not a Unity project/);
+    const t = await run(["template", dir]);
+    assert.equal(t.code, 1, t.stdout + t.stderr);
+    assert.match(t.stderr, /^NO_PROJECT: /);
   });
 });
 
