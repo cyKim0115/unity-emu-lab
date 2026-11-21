@@ -104,7 +104,8 @@ emu-lab webgl <빌드 폴더> --ready-marker "<콘솔에 찍히는 한 줄>" --t
   - `--ignore-error <정규식>`: 맞는 콘솔 오류·예외를 무시한다(외부 분석 스크립트 오류 등). 무시한 개수는 `ignored_errors`.
   - `canvas_blank`: 마지막 스크린샷에서 캔버스가 한 가지 색이면 참. `--fail-on-blank`일 때만 실패로 본다.
   - `--gpu auto|host|swiftshader`: GPU 없는 호스트용 소프트웨어 WebGL. `auto`는 디스플레이 없는 Linux의 headless 실행에서만 SwiftShader를 쓴다.
-  - `--browser-arg=<스위치>`(여러 번): 브라우저 스위치 추가(예: 컨테이너의 `--browser-arg=--no-sandbox`. root면 자동으로 붙는다).
+  - `--browser-arg=<스위치>`(여러 번): 브라우저 스위치 추가(예: 컨테이너의 `--browser-arg=--no-sandbox`. root면 자동으로 붙는다). 정해진 스위치만 받는다(`--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`, `--ignore-gpu-blocklist`, `--enable-unsafe-swiftshader`, `--use-gl=`, `--use-angle=`, `--lang=`, `--force-device-scale-factor=`, `--enable-features=`, `--disable-features=`). 다른 프로그램을 실행하는 스위치(`--renderer-cmd-prefix` 등)나 프로필·DevTools·소리를 바꾸는 스위치는 `BAD_OPTION`이다.
+  - 브라우저 실행 파일은 CLI의 `--browser`와 환경 변수(`EMU_BROWSER`·`CHROME_PATH`)로만 고른다. MCP 도구는 실행 파일 경로를 받지 않는다.
   - `summary.json`에 `browser_version`, `webgl`(WebGL 버전과 렌더러), `cross_origin_isolated`, `gpu`가 남는다.
 - 결과는 `~/.emu-lab/runs/<시각>-webgl-<pid>/`(`summary.json`, `console.txt`, `server.log`, `browser.log`, PNG). 종료 코드 0 PASS, 1 FAIL.
 
