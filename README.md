@@ -202,11 +202,13 @@ Windows는 `ANDROID_HOME`을 일부러 무시한다(Android Studio의 SDK를 건
 
 2026-11-21, 같은 PC(0.2.0 작업): 시험 421개(3개 건너뜀: 샘플 APK, Windows의 심볼릭 링크, 대소문자를 가리는 파일 시스템). 가짜 Unity로 빌드 판정, 실제 git 저장소로 프로젝트 보호(한글·공백·대괄호 경로, 하위 폴더 프로젝트, 40개 넘는 일괄 되돌리기, 패치 실패, 볼륨 넘는 이동), PowerShell `project-guard.ps1`과 상태 폴더 양방향 상호 시험, 가짜 탐침으로 OS별 점검. 실제 Unity 6000.6.0f1로 샘플 Windows 빌드를 `emu-lab build`로 돌려 `BUILD_OK`와 `EMU_BUILD_NOTE audio-off`를 확인했고(WebGL 모듈이 없는 에디터에서는 `Error building player because build target was unsupported`를 이유로 실패를 알림), 이 PC에서 `emu-lab doctor`와 `doctor.ps1`의 판정이 같았다. 열린 에디터·임포트 워커를 잠금 감지가 실제 프로세스로 찾았다.
 
+2026-11-24, 같은 PC(커밋 29663f2, 실제 에뮬레이터 Android 15 API 35 `google_apis` x86_64, Unity 내장 adb): `emu-lab start`(빠른 부팅 21초) → 다른 주인으로 돌린 PowerShell `smoke-test.ps1`이 설치 전에 `BUSY`로 멈춤 → `emu-lab smoke`(샘플 APK) PASS(실행 2.4초, 알림 게시 28초, 알림창 표시·탭 복귀) → `--notif-delay 7200 --time-travel 185` PASS(시계를 185분 앞당긴 뒤 되돌림, `auto_time` 1) → MCP를 stdio로 붙여 `emu_status`·`emu_screenshot`(이미지)·`emu_smoke`(40초 뒤 job으로 넘어가 `emu_job`으로 PASS)·`emu_clock` 앞당기기·되돌리기·`emu_release`(`uninstall`: 앱 제거, 이 임대가 띄운 에뮬레이터 종료, 임대 삭제).
+
 **아직 확인하지 않은 것(0.2.0 기준)**
 
 - macOS·Linux: 빌드·프로젝트 보호·점검은 단위 시험과 세 OS CI까지만 확인했다. 실제 Mac·Linux에서 Unity batchmode 빌드, 에뮬레이터 가속 점검, 잠금 감지(`lsof`·`/proc`)는 아직 돌려 보지 않았다.
 
-- Android: npm 패키지의 Android 경로(`start`·`smoke`·`notification`·`clock`·`release`와 같은 일을 하는 MCP 도구)는 위의 가짜 adb 단위 시험과 Windows·macOS·Linux CI까지만 확인했다. 실제 에뮬레이터에서는 아직 돌려 보지 않았다.
+- Android: npm 패키지의 Android 경로(`start`·`smoke`·`notification`·`clock`·`release`와 같은 일을 하는 MCP 도구)는 Windows에서만 실제 에뮬레이터로 확인했다(위 2026-11-24). macOS·Linux에서는 가짜 adb 단위 시험과 CI까지만 확인했다.
 - WebGL: `emu-lab webgl`·`emu_webgl_smoke`는 실제 Chrome(headless)으로 가짜 빌드 폴더를 돌렸지만, 실제 Unity WebGL 빌드로는 아직 확인하지 않았다.
 
 PowerShell 스크립트는 둘 다 실제 환경(Android 15, API 35 `google_apis` x86_64 에뮬레이터, 실제 Unity WebGL 빌드)에서 확인했다.
