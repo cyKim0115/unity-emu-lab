@@ -354,7 +354,7 @@ if ($androidHost) {
     }
     $defaultSdk = Join-Path $env:USERPROFILE 'Android\Sdk'
     if (-not (Test-SamePath $SdkRoot $defaultSdk)) {
-        Add-Result 'WARN' 'mobile-mcp-sdk' "the SDK is at $SdkRoot (from $SdkRootSource), but .mcp.json, .cursor\mcp.json and the Codex snippet in AGENTS.md use $defaultSdk. If you use mobile-mcp, change ANDROID_HOME there to $SdkRoot (local edit, do not commit)."
+        Add-Result 'WARN' 'mobile-mcp-sdk' "the SDK is at $SdkRoot (from $SdkRootSource), but .mcp.json and the Codex snippet in AGENTS.md use $defaultSdk. If you use mobile-mcp, change ANDROID_HOME there to $SdkRoot (local edit, do not commit)."
     }
 }
 

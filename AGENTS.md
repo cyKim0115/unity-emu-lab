@@ -168,11 +168,10 @@ macOS·Linux에서는 이 패키지로 위 절차를 한다(Windows에서도 된
 - Node.js 20 이상이 필요하다(`doctor.ps1`의 `node` 줄). AI 세션·작업 공간을 **이 저장소 폴더**에서 열어야 프로젝트 MCP 설정을 읽는다.
 - 기기 ID는 `emulator-5554`가 아니라 AVD 이름 `unity-test`다. Unity 화면 안은 요소 목록이 없어 스크린샷과 좌표로 다룬다.
 - Claude Code: 저장소의 `.mcp.json`. 사용자가 `claude`를 실행할 때 프로젝트 MCP를 승인해야 붙는다(대신 승인하지 않는다).
-- Cursor: `.cursor/mcp.json`.
 - Codex: 이 저장소에는 Codex용 프로젝트 설정이 없어 사용자 전역 `~/.codex/config.toml`에 넣어야 한다. 넣으면 이 저장소와 무관한 모든 Codex 세션이 시작할 때 mobile-mcp를 띄운다. 그래서 규칙 12대로 사용자가 원할 때만, README 「구성」의 Codex용 TOML 조각과 이 영향을 보여 주고 「예」를 받은 뒤 넣는다.
   넣기 전에 `[mcp_servers.mobile-mcp]`가 이미 있는지 확인한다(같은 표가 두 번 있으면 파일을 못 읽는다). 블록은 파일 끝, 최상위 키들 뒤에 붙인다. `<USERPROFILE>`은 `%USERPROFILE%`의 실제 절대 경로로 바꿔 보여 준다(TOML 문자열이라 `\`는 `\\`로 쓴다).
   Codex는 MCP를 세션 시작 때 읽으므로 추가한 뒤 새 세션을 열어야 붙는다. 첫 실행 때 npx가 패키지를 받느라 기본 대기 10초를 넘길 수 있어 `startup_timeout_sec = 120`으로 둔다. 다 쓰면 이 블록을 지우면 된다고 함께 알린다.
-- SDK가 기본 위치가 아니면(`doctor.ps1`에 `mobile-mcp-sdk` WARN) 세 설정의 `ANDROID_HOME`을 그 경로로 바꾼다. 이 PC 전용 변경이라 커밋하지 않는다. mobile-mcp는 `ANDROID_HOME\platform-tools\adb`가 없으면 기기를 하나도 못 찾는다.
+- SDK가 기본 위치가 아니면(`doctor.ps1`에 `mobile-mcp-sdk` WARN) 두 설정(`.mcp.json`, Codex 조각)의 `ANDROID_HOME`을 그 경로로 바꾼다. 이 PC 전용 변경이라 커밋하지 않는다. mobile-mcp는 `ANDROID_HOME\platform-tools\adb`가 없으면 기기를 하나도 못 찾는다.
 
 ## 막혔을 때
 
